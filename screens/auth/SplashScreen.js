@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, Nunito_700Bold } from '@expo-google-fonts/nunito';
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -27,13 +27,13 @@ export default function SplashScreen({ navigation, currentUser }) {
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 600,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.delay(1000),
         Animated.timing(fadeAnim, {
           toValue: 0,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ]).start(() => {
         if (currentUser) {

@@ -62,8 +62,7 @@ export default function WelcomeScreen({ navigation }) {
           />
           <LinearGradient
             colors={['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.85)', '#FFFFFF']}
-            style={styles.imageGradientMask}
-            pointerEvents="none"
+            style={[styles.imageGradientMask, styles.noPointerEvents]}
           />
         </View>
 
@@ -143,6 +142,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 40,
+  },
+  noPointerEvents: {
+    pointerEvents: 'none',
   },
   bottomText: {
     fontFamily: 'Nunito_700Bold',

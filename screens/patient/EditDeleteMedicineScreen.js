@@ -31,7 +31,7 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
     setDose(med.dose);
     setSelectedInstruction(med.mealInstruction || 'After lunch');
     setNotes(med.notes || '');
-    setTimes(dbService.getReminderTimes(med.id).map((time) => time.timeStr));
+    setTimes(dbService.getReminderTimes(med.id).map((time) => time.timeStr).filter(Boolean));
   }, [medicineId]);
 
   const instructionOptions = [
@@ -134,8 +134,8 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
         <View style={styles.fieldGroup}>
           <PatientText style={styles.label}>{t('timesToTake', { count: times.length })}</PatientText>
           <View style={styles.chipsRow}>
-            {times.map((time) => (
-              <View key={time} style={styles.timeChip}>
+            {times.map((time, index) => (
+              <View key={`${medicineId}-${time}-${index}`} style={styles.timeChip}>
                 <PatientText style={styles.timeChipText}>{time}</PatientText>
                 <TouchableOpacity onPress={() => setTimes((current) => current.filter((item) => item !== time))} style={styles.chipRemoveBtn}>
                   <PatientText style={styles.chipRemoveIcon}>✕</PatientText>

@@ -8,7 +8,7 @@ import {
   signOut as firebaseSignOut,
 } from 'firebase/auth';
 import {
-  addDoc,
+  addDoc as firestoreAddDoc,
   collection,
   deleteDoc,
   doc,
@@ -19,8 +19,8 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
-  setDoc,
-  updateDoc,
+  setDoc as firestoreSetDoc,
+  updateDoc as firestoreUpdateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -261,6 +261,55 @@ const withoutPassword = (user = {}) => {
   return safeUser;
 };
 
+// Firestore rejects `undefined` anywhere in a payload. Keep this guard at the
+// database boundary so optional UI fields cannot break unrelated writes.
+const sanitizeFirestoreData = (value) => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value.map(sanitizeFirestoreData).filter((item) => item !== undefined);
+  }
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, item]) => [key, sanitizeFirestoreData(item)])
+        .filter(([, item]) => item !== undefined)
+    );
+  }
+  return value;
+};
+
+const setDoc = (reference, data, options) => options
+  ? firestoreSetDoc(reference, sanitizeFirestoreData(data), options)
+  : firestoreSetDoc(reference, sanitizeFirestoreData(data));
+const addDoc = (reference, data) => firestoreAddDoc(reference, sanitizeFirestoreData(data));
+const updateDoc = (reference, data) => firestoreUpdateDoc(reference, sanitizeFirestoreData(data));
+
+// `time` was used by older seed data. Runtime code uses `timeStr` as the one
+// canonical reminder field while still accepting legacy records on read.
+const normalizeReminderTime = (reminder, fallbackId = null) => {
+  if (!reminder) return null;
+  const rawTime = reminder.timeStr ?? reminder.time;
+  if (rawTime === undefined || rawTime === null || String(rawTime).trim() === '') return null;
+  const { time: _legacyTime, ...rest } = reminder;
+  return {
+    ...rest,
+    id: reminder.id || fallbackId,
+    timeStr: String(rawTime).trim(),
+    enabled: reminder.enabled !== false,
+  };
+};
+
+const normalizeTimeList = (timesList) => {
+  const normalized = [...new Set((timesList || [])
+    .filter((time) => time !== undefined && time !== null)
+    .map((time) => String(time).trim())
+    .filter(Boolean))];
+  if (normalized.length === 0) {
+    throw new Error('At least one valid reminder time is required.');
+  }
+  return normalized;
+};
+
 const persistLocalCache = async () => {
   try {
     if (AsyncStorage && AsyncStorage.setItem) {
@@ -278,6 +327,9 @@ const loadLocalCache = async () => {
       if (stored) {
         localCache = JSON.parse(stored);
         localCache.users = (localCache.users || []).map(withoutPassword);
+        localCache.reminder_times = (localCache.reminder_times || [])
+          .map((reminder) => normalizeReminderTime(reminder, reminder.id))
+          .filter(Boolean);
         await persistLocalCache();
       }
     }
@@ -385,12 +437,12 @@ export const dbService = {
     };
     try {
       const batch = writeBatch(firestoreDb);
-      batch.set(doc(firestoreDb, 'users', userId), newUser);
-      batch.set(doc(firestoreDb, 'publicProfiles', userId), {
+      batch.set(doc(firestoreDb, 'users', userId), sanitizeFirestoreData(newUser));
+      batch.set(doc(firestoreDb, 'publicProfiles', userId), sanitizeFirestoreData({
         email: newUser.email,
         name: newUser.name,
         role: newUser.role,
-      });
+      }));
       await batch.commit();
     } catch (err) {
       try { await deleteUser(userCred.user); } catch (_rollbackError) {}
@@ -499,7 +551,10 @@ export const dbService = {
     return localCache.medicines.find((m) => m.id === id && !m.deleted) || null;
   },
   getReminderTimes(medicineId) {
-    return localCache.reminder_times.filter((rt) => rt.medicineId === medicineId);
+    return localCache.reminder_times
+      .filter((rt) => rt.medicineId === medicineId)
+      .map((rt) => normalizeReminderTime(rt, rt.id))
+      .filter(Boolean);
   },
   addMedicine(medData, timesList = []) {
     const medId = `med-${Date.now()}`;
@@ -520,11 +575,11 @@ export const dbService = {
     if (firestoreDb) newMed.firestoreId = doc(collection(firestoreDb, 'medicines')).id;
 
     // Create one reminder_times document per time, with enabled: true, patientId, medicineId, time
-    const timeEntries = timesList.map((timeStr, idx) => ({
+    const normalizedTimes = normalizeTimeList(timesList);
+    const timeEntries = normalizedTimes.map((timeStr, idx) => ({
       id: `rt-${Date.now()}-${idx}`,
       medicineId: medId,
       patientId,
-      time: timeStr,
       timeStr,
       enabled: true,
       createdAt: Date.now(),
@@ -541,13 +596,13 @@ export const dbService = {
     // Save to Firestore with transaction if available
     if (firestoreDb) {
       return runTransaction(firestoreDb, async (transaction) => {
-        transaction.set(doc(firestoreDb, 'medicines', newMed.firestoreId || newMed.id), newMed);
+        transaction.set(doc(firestoreDb, 'medicines', newMed.firestoreId || newMed.id), sanitizeFirestoreData(newMed));
         timeEntries.forEach((te) => {
           const timeDocRef = doc(firestoreDb, 'reminder_times', te.id);
-          transaction.set(timeDocRef, {
+          transaction.set(timeDocRef, sanitizeFirestoreData({
             ...te,
             createdAt: serverTimestamp(),
-          });
+          }));
         });
       }).then(() => ({ medicine: newMed, times: timeEntries }))
         .catch((e) => {
@@ -577,12 +632,12 @@ export const dbService = {
       let newTimes = [];
 
       if (timesList !== null) {
+        const normalizedTimes = normalizeTimeList(timesList);
         localCache.reminder_times = localCache.reminder_times.filter((rt) => rt.medicineId !== id);
-        newTimes = timesList.map((timeStr, i) => ({
+        newTimes = normalizedTimes.map((timeStr, i) => ({
           id: `rt-${Date.now()}-${i}`,
           medicineId: id,
           patientId: localCache.medicines[idx].patientId || 'usr-patient-1',
-          time: timeStr,
           timeStr,
           enabled: true,
           createdAt: Date.now(),
@@ -700,7 +755,9 @@ export const dbService = {
           query(collection(firestoreDb, 'reminder_times'), where('patientId', '==', patientId))
         );
         if (!rSnap.empty) {
-          const fetchedTimes = rSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const fetchedTimes = rSnap.docs
+            .map((d) => normalizeReminderTime({ id: d.id, ...d.data() }, d.id))
+            .filter(Boolean);
           localCache.reminder_times = localCache.reminder_times
             .filter((rt) => rt.patientId !== patientId)
             .concat(fetchedTimes);
@@ -730,7 +787,7 @@ export const dbService = {
 
     medicines.forEach((med) => {
       const timesForMed = rTimes.filter((rt) => rt.medicineId === med.id && rt.enabled !== false);
-      const timeStrs = timesForMed.length > 0 ? timesForMed.map((t) => t.time || t.timeStr) : ['9:00 AM'];
+      const timeStrs = timesForMed.length > 0 ? timesForMed.map((t) => t.timeStr) : ['9:00 AM'];
 
       timeStrs.forEach((tStr) => {
         const alreadyExists = existingLogs.some(
@@ -847,7 +904,8 @@ export const dbService = {
 
     if (times.length) {
       localCache.reminder_times = localCache.reminder_times.filter((time) => time.medicineId !== medicine.id);
-      times.forEach((time) => localCache.reminder_times.push(time));
+      times.map((time) => normalizeReminderTime(time, time.id)).filter(Boolean)
+        .forEach((time) => localCache.reminder_times.push(time));
     }
     if (doseLogs.length) {
       localCache.dose_logs = localCache.dose_logs.filter((dl) => dl.medicineId !== medicine.id);
@@ -864,16 +922,16 @@ export const dbService = {
     if (firestoreDb) {
       try {
         const batch = writeBatch(firestoreDb);
-        batch.set(doc(firestoreDb, 'medicines', medicine.firestoreId || medicine.id), restored);
+        batch.set(doc(firestoreDb, 'medicines', medicine.firestoreId || medicine.id), sanitizeFirestoreData(restored));
 
-        times.forEach((t) => {
-          batch.set(doc(firestoreDb, 'reminder_times', t.id), t);
+        times.map((time) => normalizeReminderTime(time, time.id)).filter(Boolean).forEach((t) => {
+          batch.set(doc(firestoreDb, 'reminder_times', t.id), sanitizeFirestoreData(t));
         });
         doseLogs.forEach((dl) => {
-          batch.set(doc(firestoreDb, 'dose_logs', dl.id), dl);
+          batch.set(doc(firestoreDb, 'dose_logs', dl.id), sanitizeFirestoreData(dl));
         });
         if (refillSummary) {
-          batch.set(doc(firestoreDb, 'refill_summary', refillSummary.id || `rs-${medicine.id}`), refillSummary);
+          batch.set(doc(firestoreDb, 'refill_summary', refillSummary.id || `rs-${medicine.id}`), sanitizeFirestoreData(refillSummary));
         }
         await batch.commit();
       } catch (e) {

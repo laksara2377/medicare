@@ -134,7 +134,7 @@ async function createAuthUser(email, password, displayName) {
     if (error.code === 'auth/email-already-exists') {
       console.log(`- Auth user already exists: ${email}`);
       const user = await auth.getUserByEmail(email);
-      return user;
+      return auth.updateUser(user.uid, { password, displayName, emailVerified: true });
     }
     throw error;
   }
@@ -194,9 +194,9 @@ async function seed() {
     await db.collection('reminder_times').doc(`rem-${med.id}`).set({
       medicineId: med.id,
       patientId,
-      time: med.time,
+      timeStr: med.time,
       enabled: true,
-    });
+    }, { merge: true });
   }
   console.log(`✓ Created ${medicines.length} reminder_times\n`);
 
@@ -209,11 +209,11 @@ async function seed() {
   ];
 
   for (const log of doseLogs) {
-    await db.collection('dose_logs').add({
+    await db.collection('dose_logs').doc(`seed-${patientId}-${log.medicineId}`).set({
       ...log,
       patientId,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    }, { merge: true });
   }
   console.log(`✓ Created ${doseLogs.length} dose_logs\n`);
 
@@ -232,39 +232,39 @@ async function seed() {
   console.log(`✓ Created ${consents.length} consents\n`);
 
   // Step 6: Create alerts
-  await db.collection('alerts').add({
+  await db.collection('alerts').doc(`seed-missed-dose-${patientId}`).set({
     patientId,
     type: 'missed_dose',
     message: 'Missed insulin dose at 19:00',
     handled: false,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  }, { merge: true });
   console.log('✓ Created 1 alert\n');
 
   // Step 7: Create refill_requests
-  await db.collection('refill_requests').add({
+  await db.collection('refill_requests').doc(`seed-refill-med-3-${patientId}`).set({
     medicineId: 'med-3',
     medicineName: 'Insulin Glargine',
     patientId,
     status: 'requested',
     requestedBy: 'patient',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  }, { merge: true });
   console.log('✓ Created 1 refill_request\n');
 
   // Step 8: Create care_notes
-  await db.collection('care_notes').add({
+  await db.collection('care_notes').doc(`seed-care-note-${patientId}`).set({
     patientId,
     authorId: nurseId,
     authorRole: 'nurse',
     note: 'Patient reported mild dizziness after morning medication.',
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     reviewed: false,
-  });
+  }, { merge: true });
   console.log('✓ Created 1 care_note\n');
 
   // Step 9: Create prescriptions
-  await db.collection('prescriptions').add({
+  await db.collection('prescriptions').doc(`seed-prescription-${patientId}`).set({
     patientId,
     addedBy: doctorId,
     addedByRole: 'doctor',
@@ -272,7 +272,7 @@ async function seed() {
     doctorName: 'Dr. K. Silva',
     medicines: ['Amlodipine 5mg', 'Metformin 500mg'],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  }, { merge: true });
   console.log('✓ Created 1 prescription\n');
 
   console.log('✅ SEED DONE.');

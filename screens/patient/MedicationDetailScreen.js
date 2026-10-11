@@ -30,7 +30,7 @@ export default function MedicationDetailScreen({ navigation, route, currentUser 
     if (med) {
       setMedicine(med);
       const rTimes = dbService.getReminderTimes(med.id);
-      setTimesList(rTimes.map((rt) => rt.timeStr));
+      setTimesList(rTimes.map((rt) => rt.timeStr).filter(Boolean));
     }
   }, [medicineId]);
 
