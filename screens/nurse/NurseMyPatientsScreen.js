@@ -29,10 +29,13 @@ export default function NurseMyPatientsScreen({ navigation, route, currentUser }
       const assignedLinks = links.filter((link) => link.role === 'nurse'
         && ['Active', 'accepted'].includes(link.status));
       try {
-        const pendingProfiles = await Promise.all(pendingLinks.map((link) => (
-          dbService.getPublicProfileById(link.patientId).catch(() => null)
-        )));
-        setPendingCount(pendingProfiles.filter((profile) => profile?.role === 'patient').length);
+        const pendingProfiles = await Promise.all(pendingLinks.map(async (link) => {
+          const profile = await dbService.getPublicProfileById(link.patientId).catch(() => null);
+          // Keep invitations when the public profile is missing, but reject a
+          // known legacy link that points to a caregiver instead of a patient.
+          return profile && profile.role !== 'patient' ? null : link;
+        }));
+        setPendingCount(pendingProfiles.filter(Boolean).length);
         const records = await Promise.all(assignedLinks.map(async (link) => {
           let profile;
           try {

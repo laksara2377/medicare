@@ -21,19 +21,13 @@ export default function NursePendingRequestsScreen({ navigation, currentUser }) 
     if (!memberId) return undefined;
     return dbService.subscribeToCareLinks(memberId, 'nurse', async (links) => {
       const candidates = links.filter((link) => ['Pending', 'pending'].includes(link.status));
-      try {
-        const validated = await Promise.all(candidates.map(async (link) => {
-          const patientProfile = await dbService.getPublicProfileById(link.patientId);
-          return patientProfile?.role === 'patient'
-            ? { ...link, patientName: patientProfile.name || 'Patient' }
-            : null;
-        }));
-        setPendingLinks(validated.filter(Boolean));
-        setErrorMessage('');
-      } catch (error) {
-        console.error('Unable to validate nurse invitations:', error);
-        setErrorMessage(error?.message || 'Unable to load patient invitations.');
-      }
+      const validated = await Promise.all(candidates.map(async (link) => {
+        const profile = await dbService.getPublicProfileById(link.patientId).catch(() => null);
+        if (profile && profile.role !== 'patient') return null;
+        return { ...link, patientName: profile?.name || link.patientName || link.addedBy || 'Linked patient' };
+      }));
+      setPendingLinks(validated.filter(Boolean));
+      setErrorMessage('');
     }, (error) => setErrorMessage(error?.message || 'Unable to load patient invitations.'));
   }, [currentUser?.id]);
 
@@ -102,7 +96,7 @@ export default function NursePendingRequestsScreen({ navigation, currentUser }) 
                 {link.permissions?.contact && <Text style={styles.permissionItem}>• Contact patient</Text>}
               </View>
 
-              {link.status === 'Pending' ? <View style={styles.actionButtons}>
+              {['pending'].includes(String(link.status).toLowerCase()) ? <View style={styles.actionButtons}>
                 <Button
                   title={updatingId === link.id ? 'Please wait...' : 'Decline'}
                   onPress={() => handleDecline(link)}

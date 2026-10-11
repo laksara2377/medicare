@@ -376,7 +376,6 @@ export function getActivePatientId(currentUser) {
     return getFirebaseAuth()?.currentUser?.uid || currentUser.id || 'usr-patient-1';
   }
   if (currentUser.role === 'caregiver') {
-    if (currentUser.patientId) return currentUser.patientId;
     const memberId = getFirebaseAuth()?.currentUser?.uid || currentUser.id;
     const activeLink = localCache.care_links?.find(
       (c) => c.memberId === memberId && ['Active', 'accepted'].includes(c.status)

@@ -18,8 +18,10 @@ export default function NursePatientDetailScreen({ navigation, route, currentUse
   const patient = route?.params?.patient || { name: 'Mrs. Perera', age: '72 y' };
   const patientId = patient.id || route?.params?.patientId || 'usr-patient-1';
   const nurse = currentUser || route?.params?.nurse;
+  const nurseId = getFirebaseServices().auth.currentUser?.uid || nurse?.id;
   const [careNotes, setCareNotes] = useState([]);
   const [operationError, setOperationError] = useState('');
+  const [accessStatus, setAccessStatus] = useState('checking');
   const [summary, setSummary] = useState({
     adherencePercent: 0,
     mostMissedMedName: '—',
@@ -28,13 +30,30 @@ export default function NursePatientDetailScreen({ navigation, route, currentUse
   });
 
   useEffect(() => {
+    if (!nurseId) {
+      setAccessStatus('denied');
+      return undefined;
+    }
+    return dbService.subscribeToCareLinks(nurseId, 'nurse', (links) => {
+      const link = links.find((item) => item.patientId === patientId && item.role === 'nurse');
+      const status = String(link?.status || '').toLowerCase();
+      setAccessStatus(['active', 'accepted'].includes(status) ? 'active' : status === 'pending' ? 'pending' : 'denied');
+    }, () => setAccessStatus('denied'));
+  }, [nurseId, patientId]);
+
+  useEffect(() => {
+    if (accessStatus !== 'active') {
+      setCareNotes([]);
+      return undefined;
+    }
     return dbService.subscribeToCareNotes(patientId, 'nurse', setCareNotes, (error) => {
       console.error('Nurse care-note subscription error:', error);
       setOperationError(error?.message || 'Unable to load care notes.');
     });
-  }, [patientId]);
+  }, [patientId, accessStatus]);
 
   useEffect(() => {
+    if (accessStatus !== 'active') return undefined;
     let latestLogs = [];
     let latestMedicines = [];
     const updateSummary = () => setSummary(computeAdherenceStats(latestLogs, latestMedicines, 7));
@@ -54,7 +73,7 @@ export default function NursePatientDetailScreen({ navigation, route, currentUse
       unsubscribe?.();
       unsubscribeMedicines?.();
     };
-  }, [patientId]);
+  }, [patientId, accessStatus]);
 
   const handleDeleteNote = async (note) => {
     setOperationError('');
@@ -76,6 +95,12 @@ export default function NursePatientDetailScreen({ navigation, route, currentUse
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {accessStatus === 'pending' ? (
+          <TouchableOpacity style={styles.pendingAccess} onPress={() => navigation?.navigate('NursePendingRequests')}>
+            <Text style={styles.pendingAccessTitle}>Patient invitation is pending</Text>
+            <Text style={styles.pendingAccessText}>Accept or decline this invitation before viewing history or adding notes.</Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={styles.summaryBanner}>
           <Text style={styles.summaryBannerText}>
             Adherence {summary.adherencePercent}% this week · Most missed: {summary.mostMissedMedName}
@@ -130,12 +155,14 @@ export default function NursePatientDetailScreen({ navigation, route, currentUse
             variant="outline"
             colorScheme="blue"
             onPress={() => navigation?.navigate('PatientHistory', { patient, nurse })}
+            disabled={accessStatus !== 'active'}
             style={styles.actionBtn}
           />
           <Button
             title="+ Add Note"
             colorScheme="blue"
             onPress={() => navigation?.navigate('AddCareNote', { patient, nurse })}
+            disabled={accessStatus !== 'active'}
             style={styles.actionBtn}
           />
         </View>
@@ -185,6 +212,16 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 40,
   },
+  pendingAccess: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#60A5FA',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  pendingAccessTitle: { color: '#1D4ED8', fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  pendingAccessText: { color: '#475569', fontSize: 13, lineHeight: 18 },
   summaryBanner: {
     backgroundColor: '#EFF6FF',
     borderColor: '#DBEAFE',

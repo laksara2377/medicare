@@ -19,10 +19,28 @@ export default function ManageLinkedCaregiversScreen({ navigation, route, curren
   const [removeError, setRemoveError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
-  const patientId = getActivePatientId(currentUser);
   const currentUserId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id || currentUser?.uid;
+  const [patientId, setPatientId] = useState(null);
 
   useEffect(() => {
+    if (!currentUserId) {
+      setLoadError('Could not identify the signed-in caregiver.');
+      return undefined;
+    }
+    setLoadError('');
+    return dbService.subscribeToCareLinks(currentUserId, 'caregiver', (links) => {
+      const activeLink = links.find((link) => ['active', 'accepted'].includes(String(link.status).toLowerCase()));
+      const resolvedPatientId = activeLink?.patientId || getActivePatientId(currentUser);
+      if (resolvedPatientId) setPatientId(resolvedPatientId);
+      else setLoadError('No active patient is linked to this caregiver account.');
+    }, (error) => {
+      console.error('Unable to resolve caregiver patient:', error);
+      setLoadError(error?.message || 'Unable to identify the linked patient.');
+    });
+  }, [currentUserId, currentUser]);
+
+  useEffect(() => {
+    if (!patientId) return undefined;
     setLoadError('');
     return dbService.subscribeToCareLinks(patientId, 'patient', (records) => {
       const linked = records.filter((record) => ['active', 'accepted', 'pending'].includes(String(record.status).toLowerCase())
