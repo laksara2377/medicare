@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.id == userId
+        && !('password' in request.resource.data);
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.id == userId
+        && !('password' in request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /medicines/{medicineId} {
+      allow read, delete: if request.auth != null
+        && (request.auth.uid == resource.data.patientId
+          || request.auth.uid == resource.data.userId
+          || ((!('userId' in resource.data) || resource.data.userId == null)
+            && request.auth.uid == resource.data.patientId));
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId
+        && request.auth.uid == request.resource.data.patientId;
+      allow update: if request.auth != null
+        && (
+          request.auth.uid == resource.data.patientId
+          || (('userId' in resource.data) && request.auth.uid == resource.data.userId)
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'dose', 'mealInstruction', 'notes', 'stockDays',
+          'active', 'refillStatus', 'deleted', 'deletedAt'
+        ]);
+    }
+
+    match /reminder_times/{reminderId} {
+      allow read, update, delete: if request.auth != null
+        && request.auth.uid == resource.data.patientId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.patientId;
+    }
+
+    match /refill_summary/{summaryId} {
+      allow read, update, delete: if request.auth != null
+        && request.auth.uid == resource.data.patientId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.patientId;
+    }
+
+    match /prescriptions/{prescriptionId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.patientId
+          || request.auth.uid == resource.data.userId);
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId
+        && request.auth.uid == request.resource.data.patientId;
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.userId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.patientId == resource.data.patientId;
+    }
+
+    match /care_links/{linkId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.patientId
+          || request.auth.uid == resource.data.memberId);
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.patientId
+        && request.resource.data.role in ['caregiver', 'nurse'];
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.patientId
+        && request.resource.data.role in ['caregiver', 'nurse'];
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.patientId
+        && resource.data.role in ['caregiver', 'nurse'];
+    }
+
+    match /publicProfiles/{profileId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == profileId;
+      allow delete: if false;
+    }
+
+    match /{collectionName}/{documentId} {
+      allow read, write: if ![
+        'users',
+        'medicines',
+        'prescriptions',
+        'care_links',
+        'publicProfiles'
+      ].hasAny([collectionName]);
+    }
+  }
+}
