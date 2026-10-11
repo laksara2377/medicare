@@ -13,23 +13,56 @@ import dbService from '../../services/db';
 
 export default function NursePendingRequestsScreen({ navigation, currentUser }) {
   const [pendingLinks, setPendingLinks] = useState([]);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
     const memberId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id;
     if (!memberId) return undefined;
-    return dbService.subscribeToCareLinks(memberId, 'nurse', (links) => {
-      setPendingLinks(links.filter((link) => ['Pending', 'Active', 'accepted', 'Declined', 'declined'].includes(link.status)));
-    });
+    return dbService.subscribeToCareLinks(memberId, 'nurse', async (links) => {
+      const candidates = links.filter((link) => ['Pending', 'pending'].includes(link.status));
+      try {
+        const validated = await Promise.all(candidates.map(async (link) => {
+          const patientProfile = await dbService.getPublicProfileById(link.patientId);
+          return patientProfile?.role === 'patient'
+            ? { ...link, patientName: patientProfile.name || 'Patient' }
+            : null;
+        }));
+        setPendingLinks(validated.filter(Boolean));
+        setErrorMessage('');
+      } catch (error) {
+        console.error('Unable to validate nurse invitations:', error);
+        setErrorMessage(error?.message || 'Unable to load patient invitations.');
+      }
+    }, (error) => setErrorMessage(error?.message || 'Unable to load patient invitations.'));
   }, [currentUser?.id]);
 
   const handleAccept = async (link) => {
-    await dbService.updateCareLink(link.id, { status: 'Active' });
-    setPendingLinks((current) => current.map((item) => item.id === link.id ? { ...item, status: 'Active' } : item));
+    setUpdatingId(link.id);
+    setErrorMessage('');
+    try {
+      await dbService.updateCareLink(link.id, { status: 'Active' });
+      navigation?.replace('NurseMyPatients');
+    } catch (error) {
+      console.error('Unable to accept nurse invitation:', error);
+      setErrorMessage(error?.message || 'Unable to accept this invitation.');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const handleDecline = async (link) => {
-    await dbService.updateCareLink(link.id, { status: 'Declined' });
-    setPendingLinks((current) => current.map((item) => item.id === link.id ? { ...item, status: 'Declined' } : item));
+    setUpdatingId(link.id);
+    setErrorMessage('');
+    try {
+      await dbService.updateCareLink(link.id, { status: 'Declined' });
+      setPendingLinks((current) => current.filter((item) => item.id !== link.id));
+    } catch (error) {
+      console.error('Unable to decline nurse invitation:', error);
+      setErrorMessage(error?.message || 'Unable to decline this invitation.');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   return (
@@ -41,6 +74,7 @@ export default function NursePendingRequestsScreen({ navigation, currentUser }) 
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         {pendingLinks.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No pending requests</Text>
@@ -53,7 +87,7 @@ export default function NursePendingRequestsScreen({ navigation, currentUser }) 
                   <Text style={styles.avatarText}>{(link.memberName || 'P').charAt(0)}</Text>
                 </View>
                 <View style={styles.requestInfo}>
-                  <Text style={styles.patientName}>Patient invitation</Text>
+                  <Text style={styles.patientName}>{link.patientName || 'Patient invitation'}</Text>
                   <Text style={styles.invitedBy}>Invited by patient · {link.status}</Text>
                 </View>
               </View>
@@ -70,14 +104,16 @@ export default function NursePendingRequestsScreen({ navigation, currentUser }) 
 
               {link.status === 'Pending' ? <View style={styles.actionButtons}>
                 <Button
-                  title="Decline"
+                  title={updatingId === link.id ? 'Please wait...' : 'Decline'}
                   onPress={() => handleDecline(link)}
+                  disabled={Boolean(updatingId)}
                   style={styles.declineBtn}
                   variant="outline"
                 />
                 <Button
-                  title="Accept"
+                  title={updatingId === link.id ? 'Accepting...' : 'Accept'}
                   onPress={() => handleAccept(link)}
+                  disabled={Boolean(updatingId)}
                   style={styles.acceptBtn}
                 />
               </View> : null}
@@ -106,6 +142,11 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#94A3B8',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    marginBottom: 12,
   },
   requestCard: {
     backgroundColor: '#F8FAFC',

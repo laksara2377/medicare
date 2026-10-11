@@ -28,7 +28,7 @@ export default function RefillStatusScreen({ navigation, route }) {
       <ClinicianTopBar
         title="Refill Status"
         subtitle="Mrs. Perera · Medication inventory"
-        onBackPress={() => navigation?.navigate('HomeVisitSummary', { doctor })}
+        onBackPress={() => navigation?.navigate('HomeVisitSummary', { doctor, patientId })}
         onProfilePress={() => navigation?.navigate('DoctorProfile', { doctor })}
         onLogoutPress={() => authService.logout(navigation)}
       />
@@ -37,14 +37,14 @@ export default function RefillStatusScreen({ navigation, route }) {
       <View style={styles.tabsRow}>
         <TouchableOpacity
           style={styles.tabBtn}
-          onPress={() => navigation?.navigate('HomeVisitSummary', { doctor })}
+          onPress={() => navigation?.navigate('HomeVisitSummary', { doctor, patientId })}
         >
           <Text style={styles.tabText}>Home visit</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.tabBtn}
-          onPress={() => navigation?.navigate('PatientVisits', { doctor })}
+          onPress={() => navigation?.navigate('PatientVisits', { doctor, patientId })}
         >
           <Text style={styles.tabText}>Patient visits</Text>
         </TouchableOpacity>

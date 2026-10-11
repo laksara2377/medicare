@@ -46,7 +46,7 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
       } else if (user.role === 'pharmacist') {
         navigation?.navigate('PharmacistPatientMedicines', { pharmacist: user });
       } else {
-        navigation?.navigate('ScanQRCode', { doctor: user });
+        navigation?.navigate('HomeVisitSummary', { doctor: user });
       }
     } catch (error) {
       setErrorMsg('Invalid email or password.');
@@ -57,7 +57,7 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
     <View style={styles.container}>
       <Header
         title={selectedRole === 'doctor' ? 'Doctor sign in' : 'Pharmacist sign in'}
-        subtitle="Use your verified professional account to access a patient who has shared their QR code."
+        subtitle="Use your verified professional account to open your dashboard."
         onBack={() => navigation?.navigate('Landing')}
       />
 
@@ -129,8 +129,8 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
         <View style={styles.noticeBox}>
           <Text style={styles.noticeText}>
             {selectedRole === 'doctor'
-              ? 'Doctors cannot create patients. The patient must share access from their MediCare+ app.'
-              : 'You can only see medicine stock and refill status for patients who shared their QR code.'}
+              ? 'Doctors can review their assigned patient information from the clinical dashboard.'
+              : 'Pharmacists can review medicine stock and refill status from the pharmacy dashboard.'}
           </Text>
         </View>
       </ScrollView>

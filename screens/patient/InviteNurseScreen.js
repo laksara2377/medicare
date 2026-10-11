@@ -9,13 +9,16 @@ import {
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import { getFirebaseServices } from '../../firebase/firebaseConfig';
-import dbService from '../../services/db';
+import dbService, { getActivePatientId } from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function InviteNurseScreen({ navigation, route, currentUser }) {
   const authUserId = getFirebaseServices().auth.currentUser?.uid;
-  const patientId = authUserId || route?.params?.patientId || currentUser?.id || 'usr-patient-1';
+  const patientId = route?.params?.patientId
+    || (currentUser?.role === 'caregiver' ? getActivePatientId(currentUser) : authUserId || currentUser?.id)
+    || 'usr-patient-1';
   const onAdd = route?.params?.onAdd;
+  const returnScreen = route?.params?.returnScreen;
   const patientName = currentUser?.name || 'Patient';
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,6 +32,11 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
   });
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleBack = () => {
+    if (returnScreen) navigation?.replace(returnScreen);
+    else navigation?.goBack();
+  };
 
   const handleAddNurse = async () => {
     setFormError('');
@@ -60,7 +68,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
         return;
       }
 
-      await dbService.addCareLink({
+      const careLink = await dbService.addCareLink({
         patientId,
         memberId: user.id,
         memberName: user.name,
@@ -71,7 +79,11 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
         addedBy: patientName,
       });
       onAdd?.();
-      navigation?.goBack();
+      if (returnScreen) {
+        navigation?.replace(returnScreen, { invitedCareLink: careLink });
+      } else {
+        navigation?.goBack();
+      }
     } catch (error) {
       console.error('[UI] Error adding nurse:', error);
       setFormError(error?.message || 'Could not add nurse. Please try again.');
@@ -94,7 +106,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
       <Header
         title="Invite a nurse"
         subtitle="Add a professional nurse"
-        onBack={() => navigation?.goBack()}
+        onBack={handleBack}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

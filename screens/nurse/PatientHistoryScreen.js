@@ -16,13 +16,31 @@ export default function PatientHistoryScreen({ navigation, route }) {
   const patientId = patient.id || 'usr-patient-1';
   const [selectedPeriod, setSelectedPeriod] = useState('7days');
   const [doseLogs, setDoseLogs] = useState([]);
+  const [medicines, setMedicines] = useState([]);
   const [groupedLogs, setGroupedLogs] = useState({});
+  const [loadError, setLoadError] = useState('');
+
+  const toMillis = (value) => value?.toMillis?.() || Number(value) || Date.parse(value) || 0;
 
   useEffect(() => {
     const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
       setDoseLogs(logs || []);
-    });
+      setLoadError('');
+    }, (error) => setLoadError(
+      error?.code === 'permission-denied'
+        ? 'Accept the patient invitation before viewing clinical history.'
+        : error?.message || 'Unable to load patient history.'
+    ));
     return () => unsubscribe();
+  }, [patientId]);
+
+  useEffect(() => {
+    const unsubscribe = dbService.subscribeToMedicines(patientId, setMedicines, (error) => setLoadError(
+      error?.code === 'permission-denied'
+        ? 'Accept the patient invitation before viewing clinical history.'
+        : error?.message || 'Unable to load patient medicines.'
+    ));
+    return () => unsubscribe?.();
   }, [patientId]);
 
   useEffect(() => {
@@ -36,15 +54,15 @@ export default function PatientHistoryScreen({ navigation, route }) {
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
     // Filter by period and sort newest first
-    const sortedLogs = [...doseLogs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const sortedLogs = [...doseLogs].sort((a, b) => toMillis(b.timestamp) - toMillis(a.timestamp));
     const filtered = sortedLogs.filter(log => {
-      const logDate = new Date(log.timestamp || Date.now());
+      const logDate = new Date(toMillis(log.timestamp) || Date.now());
       return logDate >= cutoffDate;
     });
 
     const grouped = {};
     filtered.forEach(log => {
-      const logDate = new Date(log.timestamp || Date.now());
+      const logDate = new Date(toMillis(log.timestamp) || Date.now());
       const today = new Date();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -99,6 +117,14 @@ export default function PatientHistoryScreen({ navigation, route }) {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {loadError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity onPress={() => navigation?.navigate('NursePendingRequests')}>
+              <Text style={styles.reviewLink}>Review patient invitation</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {/* Tab Switcher */}
         <View style={styles.tabRow}>
           <TouchableOpacity
@@ -115,18 +141,20 @@ export default function PatientHistoryScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {Object.keys(groupedLogs).length === 0 ? (
+        {!loadError && Object.keys(groupedLogs).length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No dose logs found for this period</Text>
           </View>
-        ) : (
+        ) : !loadError ? (
           Object.entries(groupedLogs).map(([dateKey, logs]) => (
             <View key={dateKey} style={styles.daySection}>
               <Text style={styles.dayHeader}>{dateKey}</Text>
               {logs.map((log, idx) => (
                 <View key={log.id || idx} style={styles.logRow}>
                   <View style={styles.logInfo}>
-                    <Text style={styles.medicineName}>{log.medicineName || 'Medicine'}</Text>
+                    <Text style={styles.medicineName}>
+                      {log.medicineName || medicines.find((medicine) => medicine.id === log.medicineId)?.name || 'Medicine'}
+                    </Text>
                     <Text style={styles.doseInfo}>{log.dose || 'Standard dose'} · {log.time || 'Today'}</Text>
                   </View>
                   <View style={[styles.statusTag, getStatusBgStyle(log.status)]}>
@@ -138,7 +166,7 @@ export default function PatientHistoryScreen({ navigation, route }) {
               ))}
             </View>
           ))
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -191,6 +219,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#94A3B8',
   },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  errorText: { color: '#B91C1C', fontSize: 14, marginBottom: 8 },
+  reviewLink: { color: '#1D4ED8', fontSize: 14, fontWeight: '700' },
   daySection: {
     marginBottom: 20,
   },

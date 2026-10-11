@@ -27,6 +27,7 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
     loadNotes();
     const unsubscribe = dbService.subscribeToCareNotes(
       patientId,
+      'patient',
       (notes) => {
         setCareNotes(notes);
         setLoading(false);

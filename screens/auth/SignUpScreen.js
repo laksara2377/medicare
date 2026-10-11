@@ -27,6 +27,9 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
 
   // Filter available roles based on route param
   const getAvailableRoles = () => {
+    if (routeRole === 'nurse') {
+      return [{ key: 'nurse', label: 'Nurse' }];
+    }
     if (routeRole === 'patient' || routeRole === 'caregiver') {
       return [
         { key: 'patient', label: 'Patient' },
@@ -88,7 +91,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         if (accountRole === 'nurse') {
           navigation?.navigate('NurseMyPatients', { nurse: newUser });
         } else if (accountRole === 'doctor') {
-          navigation?.navigate('ScanQRCode', { doctor: newUser });
+          navigation?.navigate('HomeVisitSummary', { doctor: newUser });
         } else if (accountRole === 'pharmacist') {
           navigation?.navigate('PharmacistPatientMedicines', { pharmacist: newUser });
         } else if (accountRole === 'caregiver') {

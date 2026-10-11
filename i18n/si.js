@@ -26,6 +26,7 @@ const si = {
   logoutConfirmTitle: 'MediCare+ වෙතින් ඉවත් වන්නද?', logoutPatientMessage: 'ඔබේ ඖෂධ බැලීමට නැවත පුරනය විය යුතුය.',
   noCareNotes: 'සත්කාර සටහන් නැත.', noAlerts: 'දැන් අනතුරු ඇඟවීම් නැත. සියලු මාත්‍රා නියමිත පරිදි වේ.',
   saveOutcome: 'ප්‍රතිඵල සටහන සුරකින්න', callOutcome: 'ඇමතුම් ප්‍රතිඵලය', profileUpdated: 'පැතිකඩ යාවත්කාලීන කරන ලදී',
+  profilePhoto: 'පැතිකඩ ඡායාරූපය', takePhoto: 'ඡායාරූපයක් ගන්න', chooseFromGallery: 'ගැලරියෙන් තෝරන්න', removePhoto: 'ඡායාරූපය ඉවත් කරන්න', deletePhotoConfirmTitle: 'ඡායාරූපය ඉවත් කරන්නද?', deletePhotoConfirmMessage: 'ඔබගේ පැතිකඩ ඡායාරූපය ඉවත් කිරීමට ඔබට විශ්වාසද?', photoUpdated: 'පැතිකඩ ඡායාරූපය යාවත්කාලීන කරන ලදී', photoRemoved: 'පැතිකඩ ඡායාරූපය ඉවත් කරන ලදී', changePhoto: 'ඡායාරූපය වෙනස් කරන්න', addPhoto: 'ඡායාරූපයක් එක් කරන්න', editPhoto: 'ඡායාරූපය සංස්කරණය',
   notificationMedicationReminder: 'ඖෂධ මතක් කිරීම', notificationReminderMessage: 'ප.ව. 1:00 රුධිර පීඩන ඖෂධය ගන්නා වේලාවයි.', notificationLowStock: 'තොග අඩු බවට දැනුම්දීම', notificationLowStockMessage: 'රුධිර පීඩන ඖෂධයේ දින 3ක තොගයක් පමණක් ඉතිරියි.', notificationAppointment: 'හමුවීම් මතක් කිරීම', notificationAppointmentMessage: 'වෛද්‍ය කේ. සිල්වා හමුව හෙට පෙ.ව. 10:00ට නියමිතයි.', notificationDoseTaken: 'මාත්‍රාව ගත්තා', notificationDoseMessage: 'පැරසිටමෝල් XL2 පෙ.ව. 8:05ට ගත් බව සලකුණු කරන ලදී.', timeTenMinutes: 'විනාඩි 10කට පෙර', timeOneHour: 'පැයකට පෙර', timeThreeHours: 'පැය 3කට පෙර', timeFiveHours: 'පැය 5කට පෙර',
 };
 

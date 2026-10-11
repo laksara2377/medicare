@@ -59,9 +59,10 @@ async function savePrescriptionImage(image, userId) {
 }
 
 export default function AddPrescriptionScreen({ navigation, route, currentUser }) {
+  const returnScreen = route?.params?.returnScreen || 'MyPrescriptions';
   const prescriptionId = route?.params?.prescriptionId || route?.params?.prescription?.id || null;
   const [prescription, setPrescription] = useState(route?.params?.prescription || null);
-  const [doctorName, setDoctorName] = useState(prescription?.doctorName || '');
+  const [doctorName, setDoctorName] = useState(prescription?.doctorName || (currentUser?.role === 'doctor' ? currentUser.name : ''));
   const [date, setDate] = useState(prescription?.date || todayString());
   const [medicines, setMedicines] = useState(prescription?.medicines?.length ? prescription.medicines : ['']);
   const [notes, setNotes] = useState(prescription?.notes || '');
@@ -108,7 +109,7 @@ export default function AddPrescriptionScreen({ navigation, route, currentUser }
       setErrorMessage('Add at least one medicine or attach an image.');
       return;
     }
-    const patientId = getActivePatientId(currentUser);
+    const patientId = route?.params?.patientId || getActivePatientId(currentUser);
     const userId = getFirebaseServices().auth.currentUser?.uid;
     if (!patientId || !userId) {
       setErrorMessage('Could not identify the patient or signed-in user.');
@@ -123,7 +124,6 @@ export default function AddPrescriptionScreen({ navigation, route, currentUser }
         : prescription?.imageUrl || null;
       const prescriptionData = {
         patientId,
-        userId,
         addedBy: userId,
         addedByRole: currentUser.role,
         doctorName: doctorName.trim(),
@@ -138,7 +138,11 @@ export default function AddPrescriptionScreen({ navigation, route, currentUser }
       } else {
         await dbService.createPrescription(prescriptionData);
       }
-      navigation?.navigate('MyPrescriptions', { prescriptionAdded: true });
+      navigation?.navigate(returnScreen, {
+        prescriptionAdded: true,
+        patientId,
+        doctor: route?.params?.doctor || (currentUser?.role === 'doctor' ? currentUser : undefined),
+      });
     } catch (error) {
       setErrorMessage(error.message || 'Could not save the prescription.');
     } finally {
@@ -148,7 +152,7 @@ export default function AddPrescriptionScreen({ navigation, route, currentUser }
 
   return (
     <View style={styles.container}>
-      <Header title={prescription ? 'Edit prescription' : 'Add prescription'} onBack={() => navigation?.navigate('MyPrescriptions')} />
+      <Header title={prescription ? 'Edit prescription' : 'Add prescription'} onBack={() => navigation?.navigate(returnScreen, route?.params)} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,11 +11,12 @@ import {
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
+import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
 
-export default function DoctorProfileScreen({ navigation, route, onLogout }) {
-  const doctor = route?.params?.doctor || {
+export default function DoctorProfileScreen({ navigation, route, onLogout, currentUser }) {
+  const doctor = route?.params?.doctor || currentUser || {
     id: 'usr-doctor-1',
     name: 'Dr. K. Silva',
     age: '45',
@@ -24,6 +26,9 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
   };
 
   const [isEditing, setIsEditing] = useState(false);
+  const [doctorUser, setDoctorUser] = useState(doctor);
+  const [profileImage, setProfileImage] = useState(doctor.profileImageUrl || null);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [name, setName] = useState(doctor.name || '');
   const [age, setAge] = useState(doctor.age || '');
   const [email, setEmail] = useState(doctor.email || '');
@@ -33,7 +38,7 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const handleSaveDetails = () => {
+  const handleSaveDetails = async () => {
     setFormError('');
     
     if (!name.trim()) {
@@ -59,23 +64,34 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
       return;
     }
 
-    dbService.updateUser(doctor.id, {
-      name: name.trim(),
-      age: age.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-    });
-    
-    setSavedSuccess(true);
-    setIsEditing(false);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    try {
+      await dbService.updateUser(doctor.id, { name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage });
+      setDoctorUser((value) => ({ ...value, name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage }));
+      setSavedSuccess(true);
+      setIsEditing(false);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (error) {
+      setFormError(error?.message || 'Failed to save profile changes.');
+    }
+  };
+
+  const handlePhotoSelected = async (uri) => {
+    setProfileImage(uri);
+    await dbService.updateUser(doctor.id, { profileImageUrl: uri });
+    setDoctorUser((value) => ({ ...value, profileImageUrl: uri }));
+  };
+
+  const handlePhotoDeleted = async () => {
+    setProfileImage(null);
+    await dbService.updateUser(doctor.id, { profileImageUrl: null });
+    setDoctorUser((value) => ({ ...value, profileImageUrl: null }));
   };
 
   const handleCancelEdit = () => {
-    setName(doctor.name || '');
-    setAge(doctor.age || '');
-    setEmail(doctor.email || '');
-    setPhone(doctor.phone || '');
+    setName(doctorUser.name || '');
+    setAge(doctorUser.age || '');
+    setEmail(doctorUser.email || '');
+    setPhone(doctorUser.phone || '');
     setFormError('');
     setIsEditing(false);
   };
@@ -102,10 +118,11 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
 
         {/* Doctor Header */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>D</Text>
-          </View>
-          <Text style={styles.name}>{doctor.name || 'Dr. K. Silva'}</Text>
+          <TouchableOpacity style={styles.avatarCircle} onPress={() => setShowPhotoModal(true)}>
+            {profileImage ? <Image source={{ uri: profileImage }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{(doctorUser.name || 'D').charAt(0)}</Text>}
+            <View style={styles.cameraBadge}><Text style={styles.cameraText}>✎</Text></View>
+          </TouchableOpacity>
+          <Text style={styles.name}>{doctorUser.name || 'Dr. K. Silva'}</Text>
           <View style={styles.roleTag}>
             <Text style={styles.roleTagText}>Doctor · verified</Text>
           </View>
@@ -191,35 +208,35 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
             <>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>FULL NAME</Text>
-                <Text style={styles.value}>{doctor.name || '—'}</Text>
+                <Text style={styles.value}>{doctorUser.name || '—'}</Text>
               </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>AGE</Text>
-                <Text style={styles.value}>{doctor.age || '—'}</Text>
+                <Text style={styles.value}>{doctorUser.age || '—'}</Text>
               </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>EMAIL</Text>
-                <Text style={styles.value}>{doctor.email || '—'}</Text>
+                <Text style={styles.value}>{doctorUser.email || '—'}</Text>
               </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>PHONE NUMBER</Text>
-                <Text style={styles.value}>{doctor.phone || '—'}</Text>
+                <Text style={styles.value}>{doctorUser.phone || '—'}</Text>
               </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>SLMC REGISTRATION NUMBER</Text>
                 <View style={styles.lockedField}>
-                  <Text style={[styles.value, styles.lockedValue]}>{doctor.slmcNumber || '—'}</Text>
+                  <Text style={[styles.value, styles.lockedValue]}>{doctorUser.slmcNumber || '—'}</Text>
                   <Text style={styles.lockIcon}>🔒</Text>
                 </View>
               </View>
 
               <View style={styles.infoBox}>
                 <Text style={styles.infoText}>
-                  You can only see patients who shared their QR code with you. Access is read-only.
+                  You can only see patients assigned to your professional account. Access is read-only.
                 </Text>
               </View>
 
@@ -245,12 +262,13 @@ export default function DoctorProfileScreen({ navigation, route, onLogout }) {
       <BottomSheetConfirmation
         visible={showLogoutSheet}
         title="Log out of MediCare+?"
-        message="You will need to scan patient QR code again after signing back in."
+        message="You will need to sign in again to access the clinical dashboard."
         confirmLabel="Log out"
         cancelLabel="Cancel"
         onConfirm={handleConfirmLogout}
         onCancel={() => setShowLogoutSheet(false)}
       />
+      <ProfilePhotoActionModal visible={showPhotoModal} onClose={() => setShowPhotoModal(false)} onSelectImage={handlePhotoSelected} onDeleteImage={handlePhotoDeleted} hasImage={Boolean(profileImage)} title="Doctor profile photo" />
     </View>
   );
 }
@@ -297,6 +315,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0D8F7A',
   },
+  avatarImage: { width: 72, height: 72, borderRadius: 36 },
+  cameraBadge: { position: 'absolute', right: -2, bottom: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: '#0D8F7A', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
+  cameraText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   name: {
     fontSize: 20,
     fontWeight: '800',

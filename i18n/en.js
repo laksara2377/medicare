@@ -25,6 +25,7 @@ const en = {
   logoutConfirmTitle: 'Log out of MediCare+?', logoutPatientMessage: 'You will need to sign in again to see your medicines.',
   noCareNotes: 'No care notes yet.', noAlerts: 'No alerts right now. All doses are on track.',
   saveOutcome: 'Save outcome note', callOutcome: 'Call Outcome Log', profileUpdated: 'Profile updated',
+  profilePhoto: 'Profile photo', takePhoto: 'Take photo', chooseFromGallery: 'Choose from gallery', removePhoto: 'Remove photo', deletePhotoConfirmTitle: 'Remove profile photo?', deletePhotoConfirmMessage: 'Are you sure you want to remove your profile photo?', photoUpdated: 'Profile photo updated successfully', photoRemoved: 'Profile photo removed', changePhoto: 'Change photo', addPhoto: 'Add photo', editPhoto: 'Edit photo',
   notificationMedicationReminder: 'Medication reminder', notificationReminderMessage: 'Time for your 1:00 PM Blood pressure tablet.', notificationLowStock: 'Low stock alert', notificationLowStockMessage: 'Blood pressure tablet has only 3 days of stock remaining.', notificationAppointment: 'Appointment reminder', notificationAppointmentMessage: 'Doctor visit scheduled with Dr. K. Silva tomorrow at 10:00 AM.', notificationDoseTaken: 'Dose taken', notificationDoseMessage: 'Paracetamol XL2 marked as taken at 8:05 AM.', timeTenMinutes: '10m ago', timeOneHour: '1h ago', timeThreeHours: '3h ago', timeFiveHours: '5h ago',
 };
 

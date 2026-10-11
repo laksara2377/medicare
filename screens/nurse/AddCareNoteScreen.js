@@ -9,6 +9,7 @@ import {
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import Text from '../../components/PatientText';
 
 export default function AddCareNoteScreen({ navigation, route, currentUser }) {
@@ -34,15 +35,41 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
 
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [nurseAccess, setNurseAccess] = useState(authorRole === 'nurse' ? 'checking' : 'active');
+
+  useEffect(() => {
+    if (authorRole !== 'nurse') return undefined;
+    const nurseId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id || nurse?.id;
+    if (!nurseId) {
+      setNurseAccess('denied');
+      return undefined;
+    }
+    return dbService.subscribeToCareLinks(nurseId, 'nurse', (links) => {
+      const link = links.find((item) => item.patientId === patientId && item.role === 'nurse');
+      if (link && ['Active', 'accepted'].includes(link.status) && link.permissions?.addNotes !== false) {
+        setNurseAccess('active');
+      } else if (link && ['Pending', 'pending'].includes(link.status)) {
+        setNurseAccess('pending');
+      } else {
+        setNurseAccess('denied');
+      }
+    }, () => setNurseAccess('denied'));
+  }, [authorRole, currentUser?.id, nurse?.id, patientId]);
 
   const handleSaveNote = async () => {
     if (!noteText.trim() || saving) return;
+    if (nurseAccess !== 'active') {
+      setErrorMessage(nurseAccess === 'pending'
+        ? 'Accept this patient invitation before adding care notes.'
+        : 'You do not have permission to add notes for this patient.');
+      return;
+    }
 
     setSaving(true);
     setErrorMessage('');
     setSavedSuccess(false);
 
-    const authorId = currentUser?.id || author.id;
+    const authorId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id || author.id;
     const authorName = currentUser?.name || author.name || 'Care team member';
 
     const noteData = {
@@ -57,7 +84,11 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
 
     try {
       if (existingNote) {
-        await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
+        await dbService.updateCareNote(existingNote.id, {
+          text: noteText.trim(),
+          note: noteText.trim(),
+          visibleToPatient: shareWithPatient,
+        });
       } else {
         await dbService.addCareNote(noteData);
       }
@@ -99,6 +130,15 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
           </View>
         ) : null}
 
+        {nurseAccess === 'pending' ? (
+          <TouchableOpacity
+            style={styles.invitationButton}
+            onPress={() => navigation?.navigate('NursePendingRequests')}
+          >
+            <Text style={styles.invitationButtonText}>Review and accept patient invitation</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={styles.card}>
           <Text style={styles.label}>NOTE</Text>
           <TextInput
@@ -133,7 +173,7 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
             title={saving ? 'Saving...' : 'Save Note'}
             colorScheme="blue"
             onPress={handleSaveNote}
-            disabled={saving || !noteText.trim()}
+            disabled={saving || !noteText.trim() || nurseAccess !== 'active'}
             style={styles.saveBtn}
           />
         </View>
@@ -180,6 +220,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+  invitationButton: {
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  invitationButtonText: { color: '#1D4ED8', fontSize: 14, fontWeight: '700' },
   card: {
     backgroundColor: '#F8FAFC',
     borderRadius: 16,

@@ -10,6 +10,7 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import dbService from '../../services/db';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import Text from '../../components/PatientText';
 
 export default function EditCareNoteScreen({ navigation, route, currentUser }) {
@@ -23,6 +24,8 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
   const [shareWithPatient, setShareWithPatient] = useState(existingNote ? existingNote.visibleToPatient : false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showDeleteSheet, setShowDeleteSheet] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (existingNote) {
@@ -37,34 +40,51 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
   }, [existingNote]);
 
   const handleSaveNote = async () => {
-    if (!noteText.trim()) return;
-    const authorId = currentUser?.id || nurse.id;
+    if (!noteText.trim() || saving) return;
+    setSaving(true);
+    setErrorMessage('');
+    const authorId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id || nurse.id;
     const authorName = currentUser?.name || nurse.name || 'Nurse Dilani';
 
-    if (existingNote) {
-      await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
-    } else {
-      const noteData = {
-        patientId,
-        authorId,
-        authorName,
-        authorRole: 'nurse',
-        text: noteText.trim(),
-        visibleToPatient: shareWithPatient,
-      };
-      await dbService.addCareNote(noteData);
+    try {
+      if (existingNote) {
+        await dbService.updateCareNote(existingNote.id, {
+          text: noteText.trim(),
+          note: noteText.trim(),
+          visibleToPatient: shareWithPatient,
+        });
+      } else {
+        await dbService.addCareNote({
+          patientId,
+          authorId,
+          authorName,
+          authorRole: 'nurse',
+          text: noteText.trim(),
+          note: noteText.trim(),
+          visibleToPatient: shareWithPatient,
+        });
+      }
+      setSavedSuccess(true);
+      setTimeout(() => navigation?.goBack(), 900);
+    } catch (error) {
+      console.error('Nurse edit care-note error:', error);
+      setErrorMessage(error?.message || 'Unable to save this note.');
+    } finally {
+      setSaving(false);
     }
-
-    setSavedSuccess(true);
-    setTimeout(() => {
-      navigation?.goBack();
-    }, 1500);
   };
 
-  const handleDeleteNote = () => {
-    if (existingNote) {
-      dbService.deleteCareNote(existingNote.id);
-      navigation?.goBack();
+  const handleDeleteNote = async () => {
+    setErrorMessage('');
+    try {
+      if (existingNote) {
+        await dbService.deleteCareNote(existingNote.id);
+        navigation?.goBack();
+      }
+    } catch (error) {
+      console.error('Nurse delete care-note error:', error);
+      setShowDeleteSheet(false);
+      setErrorMessage(error?.message || 'Unable to delete this note.');
     }
   };
 
@@ -82,6 +102,7 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
             <Text style={styles.successText}>✓ Note saved</Text>
           </View>
         )}
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         <View style={styles.card}>
           <Text style={styles.label}>NOTE</Text>
@@ -116,9 +137,10 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
         </View>
 
         <Button
-          title="Save changes"
+          title={saving ? 'Saving...' : 'Save changes'}
           colorScheme="blue"
           onPress={handleSaveNote}
+          disabled={saving || !noteText.trim()}
           style={styles.saveBtn}
         />
 
@@ -169,6 +191,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    marginBottom: 12,
   },
   card: {
     backgroundColor: '#F8FAFC',

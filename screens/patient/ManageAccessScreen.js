@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -98,41 +99,49 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
         {/* Caregivers Section */}
         <Text style={styles.sectionHeader}>CAREGIVERS</Text>
         <View style={styles.listCard}>
-          {accessLinks.filter(c => c.role === 'caregiver').map((item) => (
-            <View key={item.id} style={styles.rowItem}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(item.memberName || 'C').charAt(0)}
-                </Text>
-              </View>
+          {accessLinks.filter(c => c.role === 'caregiver').map((item) => {
+            const memberUser = dbService.getUserById(item.memberId);
+            const photoUrl = memberUser?.profileImageUrl || item.profileImageUrl;
+            return (
+              <View key={item.id} style={styles.rowItem}>
+                <View style={styles.avatar}>
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={styles.avatarText}>
+                      {(item.memberName || 'C').charAt(0)}
+                    </Text>
+                  )}
+                </View>
 
-              <View style={styles.infoCol}>
-                <Text style={styles.name}>{item.memberName}</Text>
-                <Text style={styles.roleText}>{item.role === 'caregiver' ? 'Caregiver' : item.role}</Text>
-                {item.email && <Text style={styles.emailText}>{item.email}</Text>}
-                {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
-                {item.status === 'Pending' && (
-                  <View style={styles.pendingTag}>
-                    <Text style={styles.pendingTagText}>Pending</Text>
-                  </View>
-                )}
-              </View>
+                <View style={styles.infoCol}>
+                  <Text style={styles.name}>{item.memberName}</Text>
+                  <Text style={styles.roleText}>{item.role === 'caregiver' ? 'Caregiver' : item.role}</Text>
+                  {item.email && <Text style={styles.emailText}>{item.email}</Text>}
+                  {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
+                  {item.status === 'Pending' && (
+                    <View style={styles.pendingTag}>
+                      <Text style={styles.pendingTagText}>Pending</Text>
+                    </View>
+                  )}
+                </View>
 
-              <View style={styles.actionButtons}>
-                {(item.role === 'caregiver' || item.role === 'nurse') && (
-                  <TouchableOpacity style={styles.editBtn} onPress={() => handleEditPermissions(item)}>
-                    <Text style={styles.editBtnText}>Edit</Text>
+                <View style={styles.actionButtons}>
+                  {(item.role === 'caregiver' || item.role === 'nurse') && (
+                    <TouchableOpacity style={styles.editBtn} onPress={() => handleEditPermissions(item)}>
+                      <Text style={styles.editBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => handleOpenRemoveSheet(item)}
+                  >
+                    <Text style={styles.removeBtnText}>Remove</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.removeBtn}
-                  onPress={() => handleOpenRemoveSheet(item)}
-                >
-                  <Text style={styles.removeBtnText}>Remove</Text>
-                </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
           {accessLinks.filter(c => c.role === 'caregiver').length === 0 && (
             <Text style={styles.emptyText}>No caregivers added yet</Text>
           )}
@@ -141,31 +150,39 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
         {/* Nurses Section */}
         <Text style={styles.sectionHeader}>NURSES</Text>
         <View style={styles.listCard}>
-          {accessLinks.filter(c => c.role === 'nurse').map((item) => (
-            <View key={item.id} style={styles.rowItem}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(item.memberName || 'N').charAt(0)}
-                </Text>
-              </View>
+          {accessLinks.filter(c => c.role === 'nurse').map((item) => {
+            const memberUser = dbService.getUserById(item.memberId);
+            const photoUrl = memberUser?.profileImageUrl || item.profileImageUrl;
+            return (
+              <View key={item.id} style={styles.rowItem}>
+                <View style={styles.avatar}>
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={styles.avatarText}>
+                      {(item.memberName || 'N').charAt(0)}
+                    </Text>
+                  )}
+                </View>
 
-              <View style={styles.infoCol}>
-                <Text style={styles.name}>{item.memberName}</Text>
-                <Text style={styles.roleText}>{item.role === 'nurse' ? 'Nurse' : item.role}</Text>
-                {item.email && <Text style={styles.emailText}>{item.email}</Text>}
-                {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
-              </View>
+                <View style={styles.infoCol}>
+                  <Text style={styles.name}>{item.memberName}</Text>
+                  <Text style={styles.roleText}>{item.role === 'nurse' ? 'Nurse' : item.role}</Text>
+                  {item.email && <Text style={styles.emailText}>{item.email}</Text>}
+                  {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
+                </View>
 
-              <View style={styles.actionButtons}>
-                <TouchableOpacity style={styles.editBtn} onPress={() => handleEditPermissions(item)}>
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.removeBtn} onPress={() => handleOpenRemoveSheet(item)}>
-                  <Text style={styles.removeBtnText}>Remove</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={styles.editBtn} onPress={() => handleEditPermissions(item)}>
+                    <Text style={styles.editBtnText}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.removeBtn} onPress={() => handleOpenRemoveSheet(item)}>
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
           {accessLinks.filter(c => c.role === 'nurse').length === 0 && (
             <Text style={styles.emptyText}>No nurses added yet</Text>
           )}
@@ -397,6 +414,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  avatarImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   avatarText: {
     fontSize: 16,

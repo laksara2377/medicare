@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,10 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import FiveTabBottomBar from '../../components/FiveTabBottomBar';
 import Header from '../../components/Header';
+import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
 import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
@@ -42,8 +45,12 @@ export default function CaregiverProfilesScreen({
   const [editName, setEditName] = useState(profileUser.name || '');
   const [editPhone, setEditPhone] = useState(profileUser.phone || '');
   const [editEmail, setEditEmail] = useState(profileUser.email || '');
+  const [editProfileImage, setEditProfileImage] = useState(profileUser.profileImageUrl || null);
   const [editError, setEditError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [photoStatusMessage, setPhotoStatusMessage] = useState('');
 
   useEffect(() => {
     if (currentUser) {
@@ -111,8 +118,50 @@ export default function CaregiverProfilesScreen({
     setEditName(profileUser.name || '');
     setEditPhone(profileUser.phone || '');
     setEditEmail(profileUser.email || '');
+    setEditProfileImage(profileUser.profileImageUrl || null);
     setEditError('');
     setIsEditing(true);
+  };
+
+  const handlePhotoSelected = async (newUri) => {
+    if (isEditing) {
+      setEditProfileImage(newUri);
+    } else {
+      try {
+        await dbService.updateUser(profileUser.id, {
+          profileImageUrl: newUri,
+        });
+        setProfileUser((prev) => ({ ...prev, profileImageUrl: newUri }));
+        if (currentUser) {
+          currentUser.profileImageUrl = newUri;
+        }
+        setPhotoStatusMessage('Profile photo updated successfully!');
+        setTimeout(() => setPhotoStatusMessage(''), 3000);
+      } catch (err) {
+        setPhotoStatusMessage('Failed to update profile photo.');
+      }
+    }
+  };
+
+  const handlePhotoDeleted = async () => {
+    setShowDeleteConfirm(false);
+    if (isEditing) {
+      setEditProfileImage(null);
+    } else {
+      try {
+        await dbService.updateUser(profileUser.id, {
+          profileImageUrl: null,
+        });
+        setProfileUser((prev) => ({ ...prev, profileImageUrl: null }));
+        if (currentUser) {
+          currentUser.profileImageUrl = null;
+        }
+        setPhotoStatusMessage('Profile photo removed.');
+        setTimeout(() => setPhotoStatusMessage(''), 3000);
+      } catch (err) {
+        setPhotoStatusMessage('Failed to remove profile photo.');
+      }
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -133,6 +182,7 @@ export default function CaregiverProfilesScreen({
         name: editName.trim(),
         phone: editPhone.trim(),
         email: editEmail.trim(),
+        profileImageUrl: editProfileImage,
       });
       if (updated) {
         setProfileUser(updated);
@@ -140,6 +190,7 @@ export default function CaregiverProfilesScreen({
           currentUser.name = updated.name;
           currentUser.phone = updated.phone;
           currentUser.email = updated.email;
+          currentUser.profileImageUrl = updated.profileImageUrl;
         }
       } else {
         setProfileUser((prev) => ({
@@ -147,6 +198,7 @@ export default function CaregiverProfilesScreen({
           name: editName.trim(),
           phone: editPhone.trim(),
           email: editEmail.trim(),
+          profileImageUrl: editProfileImage,
         }));
       }
       setIsEditing(false);
@@ -179,6 +231,12 @@ export default function CaregiverProfilesScreen({
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {photoStatusMessage ? (
+          <View style={styles.statusBanner}>
+            <Text style={styles.statusText}>✓ {photoStatusMessage}</Text>
+          </View>
+        ) : null}
+
         {/* Caregiver Personal Information Card Header */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionHeader}>PERSONAL INFORMATION</Text>
@@ -193,6 +251,36 @@ export default function CaregiverProfilesScreen({
         {isEditing ? (
           <View style={styles.editCard}>
             {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
+
+            <Text style={styles.inputLabel}>PROFILE IMAGE</Text>
+            <View style={styles.photoEditor}>
+              <TouchableOpacity
+                style={styles.avatarWrapper}
+                onPress={() => setShowPhotoModal(true)}
+                activeOpacity={0.8}
+              >
+                {editProfileImage ? (
+                  <Image source={{ uri: editProfileImage }} style={styles.profileImage} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{profileUser.name ? profileUser.name.charAt(0) : 'C'}</Text>
+                  </View>
+                )}
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera" size={13} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+              <View style={styles.photoActions}>
+                <TouchableOpacity style={styles.photoButton} onPress={() => setShowPhotoModal(true)}>
+                  <Text style={styles.photoButtonText}>{editProfileImage ? 'Change image' : 'Add image'}</Text>
+                </TouchableOpacity>
+                {editProfileImage ? (
+                  <TouchableOpacity style={styles.removePhotoButton} onPress={() => setEditProfileImage(null)}>
+                    <Text style={styles.removePhotoText}>Remove image</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
 
             <Text style={styles.inputLabel}>FULL NAME</Text>
             <TextInput
@@ -244,11 +332,25 @@ export default function CaregiverProfilesScreen({
           </View>
         ) : (
           <View style={styles.patientCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {profileUser.name ? profileUser.name.charAt(0) : 'C'}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={styles.avatarWrapper}
+              onPress={() => setShowPhotoModal(true)}
+              activeOpacity={0.8}
+            >
+              {profileUser.profileImageUrl ? (
+                <Image source={{ uri: profileUser.profileImageUrl }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {profileUser.name ? profileUser.name.charAt(0) : 'C'}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera" size={13} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.patientInfo}>
               <Text style={styles.patientName}>{profileUser.name}</Text>
               <View style={styles.roleTag}>
@@ -256,6 +358,14 @@ export default function CaregiverProfilesScreen({
                   {profileUser.role === 'nurse' ? 'Nurse' : 'Caregiver'}
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => setShowPhotoModal(true)}
+                style={styles.inlinePhotoLink}
+              >
+                <Text style={styles.inlinePhotoLinkText}>
+                  {profileUser.profileImageUrl ? 'Change photo' : 'Add photo'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.patientPhone}>{profileUser.phone}</Text>
               <Text style={styles.patientEmail}>{profileUser.email}</Text>
             </View>
@@ -276,9 +386,13 @@ export default function CaregiverProfilesScreen({
               onPress={() => navigation?.navigate('ManagePatientSchedule')}
             >
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {patient.name ? patient.name.charAt(0) : 'P'}
-                </Text>
+                {patient.profileImageUrl ? (
+                  <Image source={{ uri: patient.profileImageUrl }} style={styles.linkedPatientImage} />
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {patient.name ? patient.name.charAt(0) : 'P'}
+                  </Text>
+                )}
               </View>
               <View style={styles.patientInfo}>
                 <Text style={styles.patientName}>{patient.name}</Text>
@@ -322,28 +436,6 @@ export default function CaregiverProfilesScreen({
           </View>
         ) : null}
 
-        {careRequests.some((link) => ['Active', 'accepted'].includes(link.status) && link.permissions?.addNotes === true) ? (
-          <TouchableOpacity
-            style={styles.addCareNoteButton}
-            onPress={() => {
-              const activeLink = careRequests.find((link) => ['Active', 'accepted'].includes(link.status) && link.permissions?.addNotes === true);
-              const linkedPatient = patient || dbService.getUserById(activeLink?.patientId) || { id: activeLink?.patientId, name: 'Patient' };
-              navigation?.navigate('AddCareNote', {
-                patient: linkedPatient,
-                author: profileUser,
-                authorRole: 'caregiver',
-              });
-            }}
-          >
-            <Text style={styles.addCareNoteIcon}>📝</Text>
-            <View style={styles.addCareNoteTextCol}>
-              <Text style={styles.addCareNoteTitle}>Add care note</Text>
-              <Text style={styles.addCareNoteSubtitle}>Share an observation with the patient</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        ) : null}
-
         {/* Remote Management */}
         <Text style={styles.sectionHeader}>REMOTE MANAGEMENT</Text>
 
@@ -368,6 +460,18 @@ export default function CaregiverProfilesScreen({
             <View style={styles.actionTextCol}>
               <Text style={styles.actionTitle}>Manage patient's schedule</Text>
               <Text style={styles.actionSub}>View or change dose times</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => navigation?.navigate('CaregiverCareNotes')}
+          >
+            <Text style={styles.actionIcon}>📝</Text>
+            <View style={styles.actionTextCol}>
+              <Text style={styles.actionTitle}>Care notes</Text>
+              <Text style={styles.actionSub}>View, add and manage patient notes</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -402,6 +506,28 @@ export default function CaregiverProfilesScreen({
         cancelLabel="Cancel"
         onConfirm={handleLogoutConfirm}
         onCancel={() => setShowLogoutSheet(false)}
+      />
+
+      {/* Profile Photo Action Modal */}
+      <ProfilePhotoActionModal
+        visible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onSelectImage={handlePhotoSelected}
+        onDeleteImage={() => setShowDeleteConfirm(true)}
+        hasImage={isEditing ? Boolean(editProfileImage) : Boolean(profileUser.profileImageUrl)}
+        title="Profile photo"
+        colorScheme="green"
+      />
+
+      {/* Delete Photo Confirmation */}
+      <BottomSheetConfirmation
+        visible={showDeleteConfirm}
+        title="Remove profile photo?"
+        message="Are you sure you want to remove your profile photo?"
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        onConfirm={handlePhotoDeleted}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
 
       <FiveTabBottomBar
@@ -489,7 +615,63 @@ const styles = StyleSheet.create({
   addCareNoteIcon: { fontSize: 22, marginRight: 12 },
   addCareNoteTextCol: { flex: 1 },
   addCareNoteTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  addCareNoteSubtitle: { fontSize: 12, color: '#64748B', marginTop: 3 },
+  statusBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 4,
+    alignItems: 'center',
+  },
+  statusText: {
+    color: '#15803D',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  avatarWrapper: {
+    position: 'relative',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: 12,
+    backgroundColor: '#0D8F7A',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  inlinePhotoLink: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#EAF5F2',
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  inlinePhotoLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0D8F7A',
+  },
+  linkedPatientImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#E2E8F0',
+  },
   avatar: {
     width: 52,
     height: 52,
@@ -503,6 +685,42 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#0D8F7A',
+  },
+  profileImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: 14,
+    backgroundColor: '#E2E8F0',
+  },
+  photoEditor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  photoActions: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  photoButton: {
+    borderWidth: 1,
+    borderColor: '#0D8F7A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  photoButtonText: {
+    color: '#0D8F7A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  removePhotoButton: {
+    paddingVertical: 7,
+  },
+  removePhotoText: {
+    color: '#C0392B',
+    fontSize: 12,
+    fontWeight: '700',
   },
   patientInfo: {
     flex: 1,

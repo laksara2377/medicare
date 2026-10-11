@@ -1,0 +1,22 @@
+import React from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import ClinicianTopBar from '../../components/ClinicianTopBar';
+import Text from '../../components/PatientText';
+import authService from '../../services/authService';
+
+export default function DoctorVisitDetailsScreen({ navigation, route, currentUser }) {
+  const doctor = route?.params?.doctor || currentUser || {};
+  const visit = route?.params?.visit || {};
+  const params = { doctor, patientId: route?.params?.patientId, patientName: route?.params?.patientName };
+  return <View style={styles.container}><ClinicianTopBar title="Visit Details" subtitle={`${visit.title || 'Consultation'} · ${visit.date || ''}`} onBackPress={() => navigation?.navigate('PatientVisits', params)} onProfilePress={() => navigation?.navigate('DoctorProfile', params)} onLogoutPress={() => authService.logout(navigation)} />
+    <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.typeCard}><Text style={styles.badge}>🔍 {visit.type || 'Follow-up'}</Text><Text style={styles.date}>{visit.date || '18 Sep 2026'}</Text></View>
+      <Text style={styles.section}>ATTENDING DOCTOR</Text><View style={styles.card}><Row label="Name" value={doctor.name || 'Dr. K. Silva'} /><Row label="SLMC Number" value={`#${doctor.slmcNumber || '12345'}`} /></View>
+      <Text style={styles.section}>VITALS RECORDED</Text><View style={styles.grid}><Vital icon="❤️" label="Blood Pressure" value={visit.bloodPressure || '120/80 mmHg'} /><Vital icon="💓" label="Heart Rate" value={visit.heartRate || '72 bpm'} /><Vital icon="🌡️" label="Temperature" value={visit.temperature || '36.8°C'} /><Vital icon="⚖️" label="Weight" value={visit.weight || '68 kg'} /></View>
+      <Text style={styles.section}>CLINICAL NOTES</Text><View style={styles.card}><Text style={styles.body}>{visit.notes || 'No clinical notes recorded.'}</Text></View>
+      <Text style={styles.section}>MEDICATIONS PRESCRIBED</Text>{(visit.medicines || []).map((med) => <View key={med.name} style={styles.medCard}><View style={styles.medTop}><Text style={styles.medName}>{med.name}</Text><Text style={styles.active}>Active</Text></View><View style={styles.medTop}><View><Text style={styles.small}>Dose</Text><Text style={styles.value}>{med.dose}</Text></View><View><Text style={styles.small}>Frequency</Text><Text style={styles.value}>{med.frequency}</Text></View></View></View>)}
+    </ScrollView></View>;
+}
+function Row({ label, value }) { return <View style={styles.row}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value}</Text></View>; }
+function Vital({ icon, label, value }) { return <View style={styles.vital}><Text style={styles.icon}>{icon}</Text><Text style={styles.small}>{label}</Text><Text style={styles.vitalValue}>{value}</Text></View>; }
+const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#FFF' }, content: { padding: 19, paddingBottom: 40 }, typeCard: { flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: '#D9E3EC', borderRadius: 16, padding: 15, alignItems: 'center', marginBottom: 18 }, badge: { color: '#0D8F7A', backgroundColor: '#EAF5F2', padding: 7, borderRadius: 10, fontWeight: '800' }, date: { color: '#64748B', fontWeight: '700' }, section: { fontSize: 11, fontWeight: '900', color: '#94A3B8', marginBottom: 9, marginTop: 7 }, card: { borderWidth: 1, borderColor: '#D9E3EC', borderRadius: 16, padding: 14, marginBottom: 18 }, row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }, label: { color: '#64748B', fontWeight: '600' }, value: { color: '#0F172A', fontWeight: '800' }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 11, marginBottom: 17 }, vital: { width: '48%', borderWidth: 1, borderColor: '#D9E3EC', borderRadius: 14, padding: 13 }, icon: { fontSize: 20, marginBottom: 7 }, small: { color: '#94A3B8', fontSize: 11, fontWeight: '700' }, vitalValue: { color: '#0F172A', fontWeight: '900', marginTop: 3 }, body: { color: '#334155', lineHeight: 20 }, medCard: { borderWidth: 1, borderColor: '#D9E3EC', borderRadius: 14, padding: 14, marginBottom: 11 }, medTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }, medName: { fontSize: 16, fontWeight: '900', color: '#0F172A' }, active: { backgroundColor: '#EAF5F2', color: '#0D8F7A', borderRadius: 10, padding: 5, fontWeight: '800', fontSize: 11 } });

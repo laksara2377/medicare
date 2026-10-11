@@ -76,7 +76,9 @@ export default function CaregiverActivityScreen({ navigation, onNavigateTab, use
     navigation?.navigate('CallOutcomeLog', {
       alert,
       doseLogId: alert.id,
-      patientId: alert.patientId || patientId,
+      // The linked Firebase patient is authoritative. Older cached alerts can
+      // still contain the demo id `usr-patient-1`, which rules must reject.
+      patientId: patientId || alert.patientId,
       patientName,
       patientPhone: phone,
       medicineName: medName,

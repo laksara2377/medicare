@@ -210,6 +210,7 @@ const initialSeedData = {
   access_codes: [],
   grants: [],
   access_logs: [],
+  notifications: [],
   refill_summary: [
     {
       id: 'rs-med-1',
@@ -320,6 +321,13 @@ const persistLocalCache = async () => {
   }
 };
 
+const appendLocalRecord = (collectionName, record) => {
+  if (!Array.isArray(localCache[collectionName])) {
+    localCache[collectionName] = [];
+  }
+  localCache[collectionName].push(record);
+};
+
 const loadLocalCache = async () => {
   try {
     if (AsyncStorage && AsyncStorage.getItem) {
@@ -327,6 +335,8 @@ const loadLocalCache = async () => {
       if (stored) {
         localCache = JSON.parse(stored);
         localCache.users = (localCache.users || []).map(withoutPassword);
+        localCache.care_notes = localCache.care_notes || [];
+        localCache.notifications = localCache.notifications || [];
         localCache.reminder_times = (localCache.reminder_times || [])
           .map((reminder) => normalizeReminderTime(reminder, reminder.id))
           .filter(Boolean);
@@ -373,6 +383,13 @@ export function getActivePatientId(currentUser) {
     );
     if (activeLink?.patientId) return activeLink.patientId;
     return currentUser.patientId || currentUser.id;
+  }
+  if (currentUser.role === 'doctor' || currentUser.role === 'nurse') {
+    const memberId = getFirebaseAuth()?.currentUser?.uid || currentUser.id;
+    const activeLink = localCache.care_links?.find(
+      (c) => c.memberId === memberId && ['Active', 'accepted'].includes(c.status)
+    );
+    return activeLink?.patientId || currentUser.patientId || null;
   }
   return currentUser.id || 'usr-patient-1';
 }
@@ -479,6 +496,15 @@ export const dbService = {
     await persistLocalCache();
     return profile;
   },
+  async getPublicProfileById(id) {
+    const firestoreDb = getFirestoreDb();
+    if (!firestoreDb) {
+      const user = this.getUserById(id);
+      return user ? { id, name: user.name, email: user.email, role: user.role } : null;
+    }
+    const snapshot = await getDoc(doc(firestoreDb, 'publicProfiles', id));
+    return snapshot.exists() ? { id, ...snapshot.data() } : null;
+  },
   createUser(userData) {
     const safeUserData = withoutPassword(userData);
     const newUser = {
@@ -501,19 +527,28 @@ export const dbService = {
     return newUser;
   },
   async updateUser(id, updates) {
+    if (!id) return null;
     const safeUpdates = withoutPassword(updates);
     const idx = localCache.users.findIndex((u) => u.id === id);
+    let updatedUser = null;
     if (idx !== -1) {
       localCache.users[idx] = { ...localCache.users[idx], ...safeUpdates };
-      persistLocalCache();
-
-      const firestoreDb = getFirestoreDb();
-      if (firestoreDb) {
-        await updateDoc(doc(firestoreDb, 'users', id), safeUpdates);
-      }
-      return localCache.users[idx];
+      updatedUser = localCache.users[idx];
+    } else {
+      updatedUser = { id, ...safeUpdates };
+      localCache.users.push(updatedUser);
     }
-    return null;
+    await persistLocalCache();
+
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      try {
+        await setDoc(doc(firestoreDb, 'users', id), safeUpdates, { merge: true });
+      } catch (e) {
+        console.warn('Firestore sync user error:', e);
+      }
+    }
+    return updatedUser;
   },
 
   updateCareNote(id, updates) {
@@ -531,15 +566,13 @@ export const dbService = {
     }
   },
 
-  deleteCareNote(id) {
+  async deleteCareNote(id) {
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) await deleteDoc(doc(firestoreDb, 'care_notes', id));
     const idx = localCache.care_notes.findIndex((cn) => cn.id === id);
     if (idx !== -1) {
       localCache.care_notes.splice(idx, 1);
       persistLocalCache();
-      const firestoreDb = getFirestoreDb();
-      if (firestoreDb) {
-        deleteDoc(doc(firestoreDb, 'care_notes', id));
-      }
     }
   },
 
@@ -1161,7 +1194,20 @@ export const dbService = {
     try {
       const userId = getFirebaseAuth()?.currentUser?.uid;
       if (!userId) throw new Error('You must be signed in to update a prescription.');
-      await updateDoc(doc(firestoreDb, 'prescriptions', id), { ...updates, userId });
+      // Ownership is immutable. A linked caregiver may edit the patient's
+      // prescription, but must not become its creator or move it to a patient.
+      const {
+        userId: ignoredUserId,
+        patientId: ignoredPatientId,
+        addedBy: ignoredAddedBy,
+        addedByRole: ignoredAddedByRole,
+        ...editableUpdates
+      } = updates;
+      await updateDoc(doc(firestoreDb, 'prescriptions', id), {
+        ...editableUpdates,
+        updatedAt: serverTimestamp(),
+        updatedBy: userId,
+      });
     } catch (error) {
       console.error('[DB] updatePrescription error:', {
         code: error?.code,
@@ -1182,7 +1228,16 @@ export const dbService = {
       const imageUrl = prescriptionSnapshot.data().imageUrl;
       if (imageUrl && !imageUrl.startsWith('data:image/')) {
         const { storage } = getFirebaseServices();
-        if (storage) await deleteObject(ref(storage, imageUrl));
+        if (storage) {
+          try {
+            await deleteObject(ref(storage, imageUrl));
+          } catch (storageError) {
+            // A linked caregiver can delete the Firestore record but cannot
+            // delete a file owned by another Firebase user. Do not leave the
+            // prescription visible merely because optional image cleanup failed.
+            console.warn('[DB] Prescription image cleanup skipped:', storageError?.code || storageError?.message);
+          }
+        }
       }
       await deleteDoc(prescriptionRef);
     } catch (error) {
@@ -1213,12 +1268,37 @@ export const dbService = {
     );
   },
 
+  subscribeToLabTests(patientId, callback, onError) {
+    const firestoreDb = getFirestoreDb();
+    if (!firestoreDb || !patientId) {
+      callback([]);
+      return () => { };
+    }
+    const q = query(collection(firestoreDb, 'lab_tests'), where('patientId', '==', patientId));
+    return onSnapshot(q, (snapshot) => {
+      const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      callback(records.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || a.createdAt || 0;
+        const bTime = b.createdAt?.toMillis?.() || b.createdAt || 0;
+        return bTime - aTime;
+      }));
+    }, onError);
+  },
+
+  async addLabTest({ patientId, name, orderedBy, orderedByName }) {
+    const firestoreDb = getFirestoreDb();
+    if (!firestoreDb) throw new Error('Firebase is not configured.');
+    return addDoc(collection(firestoreDb, 'lab_tests'), {
+      patientId, name, status: 'Pending', orderedBy, orderedByName, createdAt: serverTimestamp(),
+    });
+  },
+
   // CARE_LINKS
   subscribeToCareLinks(userId, role = 'patient', callback, onError) {
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
       let q;
-      if (role === 'caregiver' || role === 'nurse') {
+      if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
         q = query(collection(firestoreDb, 'care_links'), where('memberId', '==', userId));
       } else {
         q = query(collection(firestoreDb, 'care_links'), where('patientId', '==', userId));
@@ -1227,7 +1307,7 @@ export const dbService = {
         q,
         (snapshot) => {
           const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-          if (role === 'caregiver' || role === 'nurse') {
+          if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
             localCache.care_links = localCache.care_links
               .filter((item) => item.memberId !== userId)
               .concat(records);
@@ -1240,7 +1320,7 @@ export const dbService = {
         },
         (err) => {
           if (onError) onError(err);
-          if (role === 'caregiver' || role === 'nurse') {
+          if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
             callback(this.getCareLinksForMember(userId));
           } else {
             callback(this.getCareLinks(userId));
@@ -1248,7 +1328,7 @@ export const dbService = {
         }
       );
     }
-    if (role === 'caregiver' || role === 'nurse') {
+    if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
       callback(this.getCareLinksForMember(userId));
     } else {
       callback(this.getCareLinks(userId));
@@ -1297,10 +1377,10 @@ export const dbService = {
   },
   async removeCareLink(id) {
     const link = localCache.care_links.find((c) => c.id === id);
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) await deleteDoc(doc(firestoreDb, 'care_links', id));
     localCache.care_links = localCache.care_links.filter((item) => item.id !== id);
     persistLocalCache();
-    const firestoreDb = getFirestoreDb();
-    if (firestoreDb && link) await deleteDoc(doc(firestoreDb, 'care_links', id));
     return link;
   },
   async restoreCareLink(link) {
@@ -1473,10 +1553,10 @@ export const dbService = {
 
   // NOTIFICATIONS
   getNotifications(userId) {
-    return localCache.notifications.filter((n) => n.userId === userId).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return (localCache.notifications || []).filter((n) => n.userId === userId).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   },
   markNotificationAsRead(notificationId) {
-    const idx = localCache.notifications.findIndex((n) => n.id === notificationId);
+    const idx = (localCache.notifications || []).findIndex((n) => n.id === notificationId);
     if (idx !== -1) {
       localCache.notifications[idx].read = true;
       persistLocalCache();
@@ -1494,7 +1574,7 @@ export const dbService = {
       const q = query(collection(firestoreDb, 'notifications'), where('userId', '==', userId));
       return onSnapshot(q, (snapshot) => {
         const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-        localCache.notifications = localCache.notifications.filter((item) => item.userId !== userId).concat(records);
+        localCache.notifications = (localCache.notifications || []).filter((item) => item.userId !== userId).concat(records);
         callback(records);
       }, onError);
     }
@@ -1563,16 +1643,18 @@ export const dbService = {
       editedAt: null,
     };
 
-    localCache.care_notes.push(newNote);
-    persistLocalCache();
-
+    localCache.care_notes = localCache.care_notes || [];
+    localCache.notifications = localCache.notifications || [];
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      const docRef = await addDoc(collection(firestoreDb, 'care_notes'), {
+      await setDoc(doc(firestoreDb, 'care_notes', newNote.id), {
         ...newNote,
         createdAt: serverTimestamp(),
       });
-      newNote.firestoreId = docRef.id;
+    }
+    if (!localCache.care_notes.some((note) => note.id === newNote.id)) {
+      appendLocalRecord('care_notes', newNote);
+      persistLocalCache();
     }
 
     // Create notifications if visibleToPatient is true
@@ -1594,7 +1676,7 @@ export const dbService = {
         createdAt: Date.now(),
         relatedId: newNote.id,
       };
-      localCache.notifications.push(patientNotification);
+      appendLocalRecord('notifications', patientNotification);
       persistLocalCache();
       if (firestoreDb) {
         await addDoc(collection(firestoreDb, 'notifications'), {
@@ -1604,9 +1686,26 @@ export const dbService = {
       }
 
       // 2. Caregiver Notifications for linked caregivers
-      const careLinks = this.getCareLinks(newNote.patientId);
+      let careLinks = this.getCareLinks(newNote.patientId);
+      if (firestoreDb) {
+        try {
+          const linksSnapshot = await getDocs(query(
+            collection(firestoreDb, 'care_links'),
+            where('patientId', '==', newNote.patientId)
+          ));
+          careLinks = linksSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+          localCache.care_links = localCache.care_links
+            .filter((item) => item.patientId !== newNote.patientId)
+            .concat(careLinks);
+          persistLocalCache();
+        } catch (error) {
+          console.warn('Firestore care-note recipient lookup error:', error);
+        }
+      }
       for (const link of careLinks) {
-        if (link.status === 'Active') {
+        if (link.role === 'caregiver'
+          && ['Active', 'accepted'].includes(link.status)
+          && link.memberId !== newNote.authorId) {
           const caregiverNotification = {
             id: `notif-${Date.now()}-${link.memberId}`,
             userId: link.memberId,
@@ -1621,7 +1720,7 @@ export const dbService = {
             createdAt: Date.now(),
             relatedId: newNote.id,
           };
-          localCache.notifications.push(caregiverNotification);
+          appendLocalRecord('notifications', caregiverNotification);
           persistLocalCache();
           if (firestoreDb) {
             await addDoc(collection(firestoreDb, 'notifications'), {
@@ -1638,19 +1737,19 @@ export const dbService = {
 
   async updateCareNote(id, updates) {
     const idx = localCache.care_notes.findIndex((cn) => cn.id === id);
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      await updateDoc(doc(firestoreDb, 'care_notes', id), {
+        ...updates,
+        editedAt: serverTimestamp(),
+      });
+    }
     if (idx !== -1) {
       localCache.care_notes[idx] = { ...localCache.care_notes[idx], ...updates, editedAt: Date.now() };
       persistLocalCache();
-      const firestoreDb = getFirestoreDb();
-      if (firestoreDb) {
-        await updateDoc(doc(firestoreDb, 'care_notes', id), {
-          ...updates,
-          editedAt: serverTimestamp(),
-        });
-      }
       return localCache.care_notes[idx];
     }
-    return null;
+    return { id, ...updates, editedAt: Date.now() };
   },
 
   // ACCESS CODES

@@ -7,17 +7,19 @@ import {
 } from 'react-native';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import dbService from '../../services/db';
 import PatientText from '../../components/PatientText';
 import { computeAdherenceStats } from '../../utils/dateUtils';
 
 const Text = PatientText;
 
-export default function NursePatientDetailScreen({ navigation, route }) {
+export default function NursePatientDetailScreen({ navigation, route, currentUser }) {
   const patient = route?.params?.patient || { name: 'Mrs. Perera', age: '72 y' };
   const patientId = patient.id || route?.params?.patientId || 'usr-patient-1';
-  const nurse = route?.params?.nurse;
+  const nurse = currentUser || route?.params?.nurse;
   const [careNotes, setCareNotes] = useState([]);
+  const [operationError, setOperationError] = useState('');
   const [summary, setSummary] = useState({
     adherencePercent: 0,
     mostMissedMedName: '—',
@@ -25,47 +27,42 @@ export default function NursePatientDetailScreen({ navigation, route }) {
     dailyStats: [],
   });
 
-  const loadCareNotes = () => {
-    const list = dbService.getCareNotes(patientId);
-    // Sort by timestamp descending (newest first)
-    const sorted = list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    setCareNotes(sorted);
-  };
-
   useEffect(() => {
-    loadCareNotes();
-  }, [patientId]);
-
-  useEffect(() => {
-    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
-      const medicines = dbService.getMedicines(patientId);
-      const stats = computeAdherenceStats(logs, medicines, 7);
-      setSummary(stats);
+    return dbService.subscribeToCareNotes(patientId, 'nurse', setCareNotes, (error) => {
+      console.error('Nurse care-note subscription error:', error);
+      setOperationError(error?.message || 'Unable to load care notes.');
     });
-    return () => unsubscribe();
   }, [patientId]);
 
-  const [deletedNote, setDeletedNote] = useState(null);
-  const [showUndoToast, setShowUndoToast] = useState(false);
+  useEffect(() => {
+    let latestLogs = [];
+    let latestMedicines = [];
+    const updateSummary = () => setSummary(computeAdherenceStats(latestLogs, latestMedicines, 7));
+    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
+      latestLogs = logs;
+      updateSummary();
+    }, (error) => {
+      setOperationError(error?.message || 'Unable to load patient history.');
+    });
+    const unsubscribeMedicines = dbService.subscribeToMedicines(patientId, (medicines) => {
+      latestMedicines = medicines;
+      updateSummary();
+    }, (error) => {
+      setOperationError(error?.message || 'Unable to load patient medicines.');
+    });
+    return () => {
+      unsubscribe?.();
+      unsubscribeMedicines?.();
+    };
+  }, [patientId]);
 
   const handleDeleteNote = async (note) => {
-    setDeletedNote(note);
-    dbService.deleteCareNote(note.id);
-    setShowUndoToast(true);
-    loadCareNotes();
-    
-    setTimeout(() => {
-      setShowUndoToast(false);
-      setDeletedNote(null);
-    }, 6000);
-  };
-
-  const handleUndoDelete = () => {
-    if (deletedNote) {
-      dbService.addCareNote(deletedNote);
-      setDeletedNote(null);
-      setShowUndoToast(false);
-      loadCareNotes();
+    setOperationError('');
+    try {
+      await dbService.deleteCareNote(note.id);
+    } catch (error) {
+      console.error('Nurse delete care-note error:', error);
+      setOperationError(error?.message || 'Unable to delete this note.');
     }
   };
 
@@ -124,15 +121,7 @@ export default function NursePatientDetailScreen({ navigation, route }) {
           </>
         )}
 
-        {/* Undo Toast for deleted notes */}
-        {showUndoToast && (
-          <View style={styles.undoToast}>
-            <Text style={styles.undoToastText}>Note deleted</Text>
-            <TouchableOpacity onPress={handleUndoDelete}>
-              <Text style={styles.undoLink}>Undo</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {operationError ? <Text style={styles.errorText}>{operationError}</Text> : null}
 
         {/* Side-by-side action buttons */}
         <View style={styles.actionsRow}>
@@ -156,15 +145,16 @@ export default function NursePatientDetailScreen({ navigation, route }) {
 
         {careNotes.length === 0 ? <Text style={styles.emptyNotes}>No care notes yet.</Text> : null}
         {careNotes.map((cn) => {
-          const isAuthor = cn.authorId === nurse?.id;
+          const signedInUserId = getFirebaseServices().auth.currentUser?.uid || nurse?.id;
+          const isAuthor = cn.authorId === signedInUserId;
           return (
             <View key={cn.id} style={styles.noteCard}>
               <View style={styles.noteTopRow}>
                 <Text style={styles.noteAuthor}>{cn.authorName || cn.authorRole || 'Care team'}</Text>
                 <Text style={styles.noteDate}>{cn.date || 'Today'}</Text>
               </View>
-              <Text style={styles.noteText}>{cn.note}</Text>
-              {cn.edited && <Text style={styles.editedLabel}>Edited</Text>}
+              <Text style={styles.noteText}>{cn.text || cn.note}</Text>
+              {cn.editedAt ? <Text style={styles.editedLabel}>Edited</Text> : null}
               {isAuthor ? (
                 <View style={styles.noteActions}>
                   <TouchableOpacity onPress={() => navigation?.navigate('EditCareNote', { patient, nurse, existingNote: cn })}>
@@ -205,6 +195,7 @@ const styles = StyleSheet.create({
   },
   summaryBannerText: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
   emptyNotes: { color: '#4B5563', fontSize: 14, marginBottom: 12 },
+  errorText: { color: '#DC2626', fontSize: 14, marginBottom: 12 },
   adherenceCard: {
     backgroundColor: '#EFF6FF',
     borderRadius: 20,

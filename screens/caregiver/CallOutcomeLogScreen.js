@@ -8,11 +8,12 @@ import {
 } from 'react-native';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
-import dbService from '../../services/db';
+import dbService, { getActivePatientId } from '../../services/db';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 
 export default function CallOutcomeLogScreen({ navigation, route, currentUser }) {
   const alert = route?.params?.alert;
-  const patientId = route?.params?.patientId || alert?.patientId || 'usr-patient-1';
+  const patientId = getActivePatientId(currentUser) || route?.params?.patientId || alert?.patientId;
   const patientName = route?.params?.patientName || alert?.patientName || 'Mrs. Perera';
   const medicineName = route?.params?.medicineName || alert?.medicineName || alert?.medicine || 'Medicine';
 
@@ -28,9 +29,15 @@ export default function CallOutcomeLogScreen({ navigation, route, currentUser })
 
   useEffect(() => {
     loadNotes();
-    const stopSubscribe = dbService.subscribeToCareNotes?.(patientId, setPastNotes, (err) => {
-      console.error('CallOutcomeLogScreen care notes error:', err);
-    });
+    const stopSubscribe = dbService.subscribeToCareNotes?.(
+      patientId,
+      'caregiver',
+      setPastNotes,
+      (err) => {
+        console.error('CallOutcomeLogScreen care notes error:', err);
+        setErrorMsg(err?.message || 'Could not load past outcome notes.');
+      }
+    );
     return () => stopSubscribe?.();
   }, [patientId]);
 
@@ -39,17 +46,26 @@ export default function CallOutcomeLogScreen({ navigation, route, currentUser })
 
     setErrorMsg('');
     try {
+      const caregiverId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id;
+      if (!caregiverId) throw new Error('You must be signed in to save an outcome note.');
       await dbService.addCareNote({
         patientId,
-        authorId: currentUser?.id || 'usr-caregiver-1',
+        authorId: caregiverId,
         authorName: currentUser?.name || 'Caregiver',
-        authorRole: 'Caregiver',
+        authorRole: 'caregiver',
         note: noteText.trim(),
+        visibleToPatient: true,
         medicineName,
       });
 
       if (alert?.id) {
-        await dbService.markAlertHandled(alert.id, currentUser?.id);
+        try {
+          await dbService.markAlertHandled(alert.id, caregiverId);
+        } catch (alertError) {
+          // The outcome note is already safely stored. Alert bookkeeping must
+          // not report the successfully saved note as a failed save.
+          console.warn('Outcome saved, but alert status was not updated:', alertError);
+        }
       }
 
       setSavedSuccess(true);

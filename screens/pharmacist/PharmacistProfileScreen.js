@@ -219,7 +219,7 @@ export default function PharmacistProfileScreen({ navigation, route, onLogout })
 
               <View style={styles.infoBox}>
                 <Text style={styles.infoText}>
-                  Access is read-only and limited to patients who shared their QR code.
+                  Access is read-only and limited to patients assigned to your pharmacy account.
                 </Text>
               </View>
 
@@ -245,7 +245,7 @@ export default function PharmacistProfileScreen({ navigation, route, onLogout })
       <BottomSheetConfirmation
         visible={showLogoutSheet}
         title="Log out of Pharmacist Portal?"
-        message="You will need to scan patient QR code again after signing back in."
+        message="You will need to sign in again to access the pharmacy dashboard."
         confirmLabel="Log out"
         cancelLabel="Cancel"
         onConfirm={handleConfirmLogout}

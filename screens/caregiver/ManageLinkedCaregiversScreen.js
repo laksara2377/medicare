@@ -9,51 +9,59 @@ import {
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
-import UndoSnackbar from '../../components/UndoSnackbar';
-import dbService from '../../services/db';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
+import dbService, { getActivePatientId } from '../../services/db';
 
-export default function ManageLinkedCaregiversScreen({ navigation, currentUser }) {
-  const [caregivers, setCaregivers] = useState([]);
+export default function ManageLinkedCaregiversScreen({ navigation, route, currentUser }) {
+  const invitedCareLink = route?.params?.invitedCareLink;
+  const [caregivers, setCaregivers] = useState(() => invitedCareLink ? [invitedCareLink] : []);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [undoBackup, setUndoBackup] = useState(null);
-  const [snackbarMsg, setSnackbarMsg] = useState('');
-  const [patientId, setPatientId] = useState('usr-patient-1');
+  const [removeError, setRemoveError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [isRemoving, setIsRemoving] = useState(false);
+  const patientId = getActivePatientId(currentUser);
+  const currentUserId = getFirebaseServices().auth.currentUser?.uid || currentUser?.id || currentUser?.uid;
 
   useEffect(() => {
-    const links = dbService.getCareLinksForMember(currentUser?.id);
-    const activeLink = links.find(l => l.status === 'Active');
-    if (activeLink) {
-      setPatientId(activeLink.patientId);
-    }
-  }, [currentUser?.id]);
-
-  useEffect(() => {
-    return dbService.subscribeToCareLinks(patientId, (records) => {
-      const linked = records.filter((record) => record.status === 'Active' && ['caregiver', 'nurse'].includes(record.role));
-      setCaregivers(linked.map((record) => ({
-        ...(dbService.getUserById(record.memberId) || {}),
-        consentId: record.id,
-      })));
+    setLoadError('');
+    return dbService.subscribeToCareLinks(patientId, 'patient', (records) => {
+      const linked = records.filter((record) => ['active', 'accepted', 'pending'].includes(String(record.status).toLowerCase())
+        && ['caregiver', 'nurse'].includes(String(record.role).toLowerCase()));
+      setCaregivers(linked.map((record) => {
+        const profile = dbService.getUserById(record.memberId) || {};
+        return {
+          ...profile,
+          id: record.memberId,
+          name: profile.name || record.memberName || 'Care team member',
+          email: profile.email || record.email || '',
+          role: record.role,
+          status: record.status,
+          consentId: record.id,
+        };
+      }));
+    }, (error) => {
+      console.error('Unable to load care-circle members:', error);
+      setLoadError(error?.message || 'Unable to refresh the care-circle list.');
     });
   }, [patientId]);
 
   const handleConfirmRemove = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isRemoving) return;
 
-    const link = dbService.getCareLinks(patientId).find((record) => record.id === deleteTarget.consentId);
-    if (link) await dbService.removeCareLink(link.id);
-    setCaregivers((current) => current.filter((member) => member.id !== deleteTarget.id));
-    setUndoBackup({ member: deleteTarget, link });
-    setSnackbarMsg(`Removed ${deleteTarget.name}`);
-    setDeleteTarget(null);
-  };
-
-  const handleUndoRemove = async () => {
-    if (undoBackup) {
-      if (undoBackup.link) await dbService.restoreCareLink(undoBackup.link);
-      setCaregivers((current) => [...current, undoBackup.member]);
-      setUndoBackup(null);
-      setSnackbarMsg('');
+    setIsRemoving(true);
+    setRemoveError('');
+    try {
+      await dbService.removeCareLink(deleteTarget.consentId);
+      setCaregivers((current) => current.filter((member) => member.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      if (deleteTarget.id === currentUserId) {
+        navigation?.replace('CaregiverProfiles');
+      }
+    } catch (error) {
+      console.error('Unable to remove care-circle member:', error);
+      setRemoveError(error?.message || 'Unable to remove this care-circle member. Please try again.');
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -62,11 +70,14 @@ export default function ManageLinkedCaregiversScreen({ navigation, currentUser }
       <Header
         title="Care Circle"
         subtitle="Manage linked caregivers & visiting nurse"
-        onBack={() => navigation?.goBack()}
+        onBack={() => navigation?.replace('CaregiverProfiles')}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionHeader}>LINKED CAREGIVERS & NURSES</Text>
+
+        {removeError ? <Text style={styles.errorText}>{removeError}</Text> : null}
+        {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
 
         <View style={styles.cardGroup}>
           {caregivers.map((item) => (
@@ -80,13 +91,21 @@ export default function ManageLinkedCaregiversScreen({ navigation, currentUser }
                 <Text style={styles.roleSub}>
                   {item.role === 'nurse' ? 'Visiting Nurse' : 'Family Caregiver'} · {item.email}
                 </Text>
+                {['Pending', 'pending'].includes(item.status) ? (
+                  <Text style={styles.pendingText}>Invitation pending</Text>
+                ) : null}
               </View>
 
               <TouchableOpacity
                 style={styles.removeBtn}
-                onPress={() => setDeleteTarget(item)}
+                onPress={() => {
+                  setRemoveError('');
+                  setDeleteTarget(item);
+                }}
               >
-                <Text style={styles.removeBtnText}>Remove</Text>
+                <Text style={styles.removeBtnText}>
+                  {item.id === currentUserId ? 'Leave' : 'Remove'}
+                </Text>
               </TouchableOpacity>
             </View>
           ))}
@@ -96,7 +115,10 @@ export default function ManageLinkedCaregiversScreen({ navigation, currentUser }
         <Button
           title="+ Invite Nurse (Care Plan)"
           colorScheme="blue"
-          onPress={() => navigation?.navigate('InviteNurse')}
+          onPress={() => navigation?.navigate('InviteNurse', {
+            patientId,
+            returnScreen: 'ManageLinkedCaregivers',
+          })}
           style={styles.inviteNurseBtn}
         />
       </ScrollView>
@@ -104,23 +126,20 @@ export default function ManageLinkedCaregiversScreen({ navigation, currentUser }
       {/* Remove Confirmation Modal Sheet */}
       <BottomSheetConfirmation
         visible={Boolean(deleteTarget)}
-        title="Remove caregiver?"
+        title={deleteTarget?.id === currentUserId ? 'Leave care circle?' : 'Remove care-circle member?'}
         message={
           deleteTarget
-            ? `Are you sure you want to remove ${deleteTarget.name} from care circle?`
+            ? deleteTarget.id === currentUserId
+              ? 'Are you sure you want to leave this patient’s care circle?'
+              : `Are you sure you want to remove ${deleteTarget.name} from care circle?`
             : ''
         }
-        confirmLabel="Remove"
+        confirmLabel={isRemoving ? 'Please wait...' : deleteTarget?.id === currentUserId ? 'Leave' : 'Remove'}
         cancelLabel="Cancel"
         onConfirm={handleConfirmRemove}
-        onCancel={() => setDeleteTarget(null)}
-      />
-
-      {/* 6-Second Undo Bar (UI-07) */}
-      <UndoSnackbar
-        message={snackbarMsg}
-        onUndo={handleUndoRemove}
-        onDismiss={() => setSnackbarMsg('')}
+        onCancel={() => {
+          if (!isRemoving) setDeleteTarget(null);
+        }}
       />
     </View>
   );
@@ -141,6 +160,12 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     letterSpacing: 0.5,
     marginTop: 8,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '600',
     marginBottom: 12,
   },
   cardGroup: {
@@ -184,6 +209,12 @@ const styles = StyleSheet.create({
   roleSub: {
     fontSize: 12,
     color: '#64748B',
+    marginTop: 2,
+  },
+  pendingText: {
+    color: '#D97706',
+    fontSize: 11,
+    fontWeight: '700',
     marginTop: 2,
   },
   removeBtn: {

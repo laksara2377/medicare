@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function PatientCard({ patient, onPress, onMarkReviewed }) {
   const isNeedsAttention = patient.adherence < 70 || patient.statusTag === 'Needs attention';
@@ -11,7 +11,11 @@ export default function PatientCard({ patient, onPress, onMarkReviewed }) {
       style={[styles.card, isNeedsAttention && styles.attentionCard]}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{(patient.name || 'P').charAt(0)}</Text>
+        {patient.profileImageUrl ? (
+          <Image source={{ uri: patient.profileImageUrl }} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarText}>{(patient.name || 'P').charAt(0)}</Text>
+        )}
       </View>
 
       <View style={styles.infoContainer}>
@@ -40,7 +44,7 @@ export default function PatientCard({ patient, onPress, onMarkReviewed }) {
 
         <View style={styles.adherenceRow}>
           <Text style={styles.adherenceText}>
-            Adherence {patient.adherence || 64}% this week
+            Adherence {patient.adherence ?? 0}% this week
           </Text>
 
           {onMarkReviewed && (
@@ -86,6 +90,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   avatarText: {
     fontSize: 18,
