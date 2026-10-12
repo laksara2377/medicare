@@ -383,7 +383,7 @@ export function getActivePatientId(currentUser) {
     if (activeLink?.patientId) return activeLink.patientId;
     return currentUser.patientId || currentUser.id;
   }
-  if (currentUser.role === 'doctor' || currentUser.role === 'nurse') {
+  if (currentUser.role === 'doctor' || currentUser.role === 'nurse' || currentUser.role === 'pharmacist') {
     const memberId = getFirebaseAuth()?.currentUser?.uid || currentUser.id;
     const activeLink = localCache.care_links?.find(
       (c) => c.memberId === memberId && ['Active', 'accepted'].includes(c.status)
@@ -529,6 +529,7 @@ export const dbService = {
     if (!id) return null;
     const safeUpdates = withoutPassword(updates);
     const idx = localCache.users.findIndex((u) => u.id === id);
+    const previousUser = idx !== -1 ? { ...localCache.users[idx] } : null;
     let updatedUser = null;
     if (idx !== -1) {
       localCache.users[idx] = { ...localCache.users[idx], ...safeUpdates };
@@ -545,6 +546,13 @@ export const dbService = {
         await setDoc(doc(firestoreDb, 'users', id), safeUpdates, { merge: true });
       } catch (e) {
         console.warn('Firestore sync user error:', e);
+        if (previousUser) {
+          localCache.users = localCache.users.map((item) => item.id === id ? previousUser : item);
+        } else {
+          localCache.users = localCache.users.filter((item) => item.id !== id);
+        }
+        await persistLocalCache();
+        throw e;
       }
     }
     return updatedUser;
@@ -1297,7 +1305,7 @@ export const dbService = {
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
       let q;
-      if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
+      if (role === 'caregiver' || role === 'nurse' || role === 'doctor' || role === 'pharmacist') {
         q = query(collection(firestoreDb, 'care_links'), where('memberId', '==', userId));
       } else {
         q = query(collection(firestoreDb, 'care_links'), where('patientId', '==', userId));
@@ -1306,7 +1314,7 @@ export const dbService = {
         q,
         (snapshot) => {
           const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-          if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
+          if (role === 'caregiver' || role === 'nurse' || role === 'doctor' || role === 'pharmacist') {
             localCache.care_links = localCache.care_links
               .filter((item) => item.memberId !== userId)
               .concat(records);
@@ -1319,7 +1327,7 @@ export const dbService = {
         },
         (err) => {
           if (onError) onError(err);
-          if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
+          if (role === 'caregiver' || role === 'nurse' || role === 'doctor' || role === 'pharmacist') {
             callback(this.getCareLinksForMember(userId));
           } else {
             callback(this.getCareLinks(userId));
@@ -1327,7 +1335,7 @@ export const dbService = {
         }
       );
     }
-    if (role === 'caregiver' || role === 'nurse' || role === 'doctor') {
+    if (role === 'caregiver' || role === 'nurse' || role === 'doctor' || role === 'pharmacist') {
       callback(this.getCareLinksForMember(userId));
     } else {
       callback(this.getCareLinks(userId));

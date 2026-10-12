@@ -11,6 +11,8 @@ import { useT } from '../../i18n/LanguageContext';
 export default function EditDeleteMedicineScreen({ navigation, route }) {
   const t = useT();
   const medicineId = route?.params?.medicineId || 'med-1';
+  const returnScreen = route?.params?.returnScreen || 'YourMedicines';
+  const returnParams = route?.params?.returnParams || {};
   const [medicine, setMedicine] = useState(null);
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
@@ -59,7 +61,7 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
         mealInstruction: selectedInstruction,
         notes: notes.trim(),
       }, times);
-      navigation?.navigate('YourMedicines');
+      navigation?.replace(returnScreen, returnParams);
     } catch (error) {
       console.error('[UI] Error updating medicine:', {
         code: error?.code,
@@ -83,7 +85,7 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
       setTimeout(() => {
         setSnackbarMsg('');
         setUndoData(null);
-        navigation?.navigate('YourMedicines');
+        navigation?.replace(returnScreen, returnParams);
       }, 6000);
     } catch (error) {
       console.error('[UI] Error deleting medicine:', {
@@ -101,13 +103,13 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
     dbService.restoreMedicine(undoData.medicine, undoData.times);
     setUndoData(null);
     setSnackbarMsg('');
-    navigation?.navigate('YourMedicines');
+    navigation?.replace(returnScreen, returnParams);
   };
 
   const handleSnackbarDismiss = () => {
     setSnackbarMsg('');
     setUndoData(null);
-    navigation?.navigate('YourMedicines');
+    navigation?.replace(returnScreen, returnParams);
   };
 
   if (!medicine) return null;

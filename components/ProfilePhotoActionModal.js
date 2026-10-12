@@ -18,7 +18,7 @@ export default function ProfilePhotoActionModal({
   onDeleteImage,
   hasImage = false,
   title = 'Profile photo',
-  subtitle = 'Choose how you want to update your profile photo',
+  subtitle,
   colorScheme = 'green',
 }) {
   const [loading, setLoading] = useState(false);
@@ -28,6 +28,10 @@ export default function ProfilePhotoActionModal({
 
   const isBlue = colorScheme === 'blue';
   const primaryColor = isBlue ? '#007AFF' : '#0D8F7A';
+  const resolvedTitle = title || (hasImage ? 'Change or remove photo' : 'Add profile photo');
+  const resolvedSubtitle = subtitle || (hasImage
+    ? 'Choose a new photo or remove your current photo'
+    : 'Take a photo or choose one from your gallery');
 
   const handleTakeCamera = async () => {
     try {
@@ -63,8 +67,10 @@ export default function ProfilePhotoActionModal({
 
   const handleDelete = () => {
     setErrorMessage('');
-    onDeleteImage();
     onClose();
+    // Let the photo picker modal close before opening a confirmation sheet.
+    // This avoids stacked native/web modals swallowing the remove action.
+    setTimeout(() => onDeleteImage?.(), 0);
   };
 
   return (
@@ -80,8 +86,8 @@ export default function ProfilePhotoActionModal({
 
       <View style={styles.sheetContainer}>
         <View style={styles.handle} />
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <Text style={styles.title}>{resolvedTitle}</Text>
+        <Text style={styles.subtitle}>{resolvedSubtitle}</Text>
 
         {errorMessage ? (
           <View style={styles.errorBanner}>
@@ -106,8 +112,8 @@ export default function ProfilePhotoActionModal({
                 <Ionicons name="camera-outline" size={22} color={primaryColor} />
               </View>
               <View style={styles.optionTextCol}>
-                <Text style={styles.optionTitle}>Take photo</Text>
-                <Text style={styles.optionSub}>Use camera to take a new picture</Text>
+                <Text style={styles.optionTitle}>{hasImage ? 'Take new photo' : 'Take photo'}</Text>
+                <Text style={styles.optionSub}>{hasImage ? 'Replace your current photo using the camera' : 'Use the camera to add a profile photo'}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
             </TouchableOpacity>
@@ -122,8 +128,8 @@ export default function ProfilePhotoActionModal({
                 <Ionicons name="images-outline" size={22} color={primaryColor} />
               </View>
               <View style={styles.optionTextCol}>
-                <Text style={styles.optionTitle}>Choose from gallery</Text>
-                <Text style={styles.optionSub}>Select an existing image from your device</Text>
+                <Text style={styles.optionTitle}>{hasImage ? 'Choose replacement' : 'Choose from gallery'}</Text>
+                <Text style={styles.optionSub}>{hasImage ? 'Replace your current photo from the gallery' : 'Select a profile photo from your device'}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
             </TouchableOpacity>

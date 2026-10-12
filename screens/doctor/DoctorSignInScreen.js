@@ -11,6 +11,7 @@ import {
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
+import { authErrorMessage, normalizeEmail, validateEmail, validatePassword, validateProfessionalId } from '../../utils/authValidation';
 
 export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
   const [selectedRole, setSelectedRole] = useState('doctor');
@@ -19,18 +20,24 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
   const [doctorRegNumber, setDoctorRegNumber] = useState('12345');
   const [pharmacyRegNumber, setPharmacyRegNumber] = useState('PH-778');
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {
+    if (loading) return;
     setErrorMsg('');
 
     const registrationNumber = selectedRole === 'doctor' ? doctorRegNumber : pharmacyRegNumber;
-    if (!email.trim() || !password.trim() || !registrationNumber.trim()) {
-      setErrorMsg(`Email, password and ${selectedRole === 'doctor' ? 'SLMC' : 'pharmacy'} registration number are all required.`);
+    const validationError = validateEmail(email)
+      || validatePassword(password)
+      || validateProfessionalId(selectedRole, registrationNumber);
+    if (validationError) {
+      setErrorMsg(validationError);
       return;
     }
 
+    setLoading(true);
     try {
-      const user = await dbService.signInProfessionalFirebase(email.trim(), password.trim());
+      const user = await dbService.signInProfessionalFirebase(normalizeEmail(email), password);
       if (user.role !== selectedRole) {
         await dbService.signOutFirebase();
         setErrorMsg(`This account is not registered as a ${selectedRole}.`);
@@ -38,6 +45,7 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
       }
       const savedRegistration = selectedRole === 'doctor' ? user.slmcNumber : user.pharmacyRegNo;
       if (String(savedRegistration || '') !== registrationNumber.trim()) {
+        await dbService.signOutFirebase();
         setErrorMsg('Invalid professional credentials, role or registration number.');
         return;
       }
@@ -49,7 +57,9 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
         navigation?.navigate('HomeVisitSummary', { doctor: user });
       }
     } catch (error) {
-      setErrorMsg('Invalid email or password.');
+      setErrorMsg(authErrorMessage(error, 'Invalid professional credentials.'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,7 +99,7 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
           <TextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => { setEmail(value); setErrorMsg(''); }}
             placeholder="dr.silva@hospital.lk"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -101,7 +111,7 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
           <TextInput
             style={styles.input}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => { setPassword(value); setErrorMsg(''); }}
             placeholder="Password"
             secureTextEntry
           />
@@ -112,12 +122,15 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
           <TextInput
             style={styles.input}
             value={selectedRole === 'doctor' ? doctorRegNumber : pharmacyRegNumber}
-            onChangeText={selectedRole === 'doctor' ? setDoctorRegNumber : setPharmacyRegNumber}
+            onChangeText={(value) => {
+              if (selectedRole === 'doctor') setDoctorRegNumber(value); else setPharmacyRegNumber(value);
+              setErrorMsg('');
+            }}
             placeholder={selectedRole === 'doctor' ? 'SLMC registration number (e.g. 12345)' : 'Pharmacy registration number (e.g. PH-778)'}
           />
         </View>
 
-        <Button title="Sign in securely" onPress={handleSignIn} style={styles.signInBtn} />
+        <Button title={loading ? 'Signing in...' : 'Sign in securely'} onPress={handleSignIn} style={styles.signInBtn} disabled={loading} />
 
         <View style={styles.signUpRow}>
           <Text style={styles.signUpQuestion}>Don't have an account? </Text>

@@ -10,6 +10,15 @@ import {
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
+import {
+  authErrorMessage,
+  normalizeEmail,
+  validateEmail,
+  validateName,
+  validatePassword,
+  validatePhone,
+  validateProfessionalId,
+} from '../../utils/authValidation';
 
 export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
   const routeRole = route?.params?.role;
@@ -17,11 +26,13 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState(routeRole || 'patient');
   const [nurseId, setNurseId] = useState('N-2041');
   const [slmcNumber, setSlmcNumber] = useState('12345');
   const [pharmacyRegNo, setPharmacyRegNo] = useState('PH-778');
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const accountRole = role;
 
@@ -55,30 +66,28 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
   const availableRoles = getAvailableRoles();
 
   const handleCreateAccount = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setErrorMsg('Name, email, and password are required.');
+    if (loading) return;
+    setErrorMsg('');
+    const validationError = validateName(name)
+      || validateEmail(email)
+      || validatePhone(phone)
+      || validatePassword(password, true)
+      || (password !== confirmPassword ? 'Passwords do not match.' : '')
+      || (['nurse', 'doctor', 'pharmacist'].includes(accountRole)
+        ? validateProfessionalId(accountRole, accountRole === 'nurse' ? nurseId : accountRole === 'doctor' ? slmcNumber : pharmacyRegNo)
+        : '');
+    if (validationError) {
+      setErrorMsg(validationError);
       return;
     }
 
-    if (accountRole === 'nurse' && !nurseId.trim()) {
-      setErrorMsg('Nurse ID is required.');
-      return;
-    }
-    if (accountRole === 'doctor' && !slmcNumber.trim()) {
-      setErrorMsg('SLMC Registration Number is required.');
-      return;
-    }
-    if (accountRole === 'pharmacist' && !pharmacyRegNo.trim()) {
-      setErrorMsg('Pharmacy Registration Number is required.');
-      return;
-    }
-
+    setLoading(true);
     try {
       const newUser = await dbService.signUpFirebase({
         name: name.trim(),
-        email: email.trim(),
+        email: normalizeEmail(email),
         phone: phone.trim(),
-        password: password.trim(),
+        password,
         role: accountRole,
         nurseId: accountRole === 'nurse' ? nurseId.trim() : undefined,
         slmcNumber: accountRole === 'doctor' ? slmcNumber.trim() : undefined,
@@ -101,13 +110,9 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         }
       }
     } catch (error) {
-      const messages = {
-        'auth/email-already-in-use': 'An account already exists for this email. Sign in or reset its password.',
-        'auth/invalid-email': 'Enter a valid email address.',
-        'auth/weak-password': 'Use a stronger password with at least 6 characters.',
-        'auth/network-request-failed': 'Could not reach Firebase. Check your internet connection and try again.',
-      };
-      setErrorMsg(messages[error.code] || error.message || 'Could not create the account.');
+      setErrorMsg(authErrorMessage(error, 'Could not create the account.'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -138,7 +143,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
           <TextInput
             style={styles.input}
             value={name}
-            onChangeText={setName}
+            onChangeText={(value) => { setName(value); setErrorMsg(''); }}
             placeholder={accountRole === 'doctor' ? 'Dr. K. Silva' : accountRole === 'nurse' ? 'Nurse Dilani' : 'Maya Perera'}
           />
         </View>
@@ -148,7 +153,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
           <TextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => { setEmail(value); setErrorMsg(''); }}
             placeholder="user@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -160,7 +165,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
           <TextInput
             style={styles.input}
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(value) => { setPhone(value); setErrorMsg(''); }}
             placeholder="+94 77 123 4567"
             keyboardType="phone-pad"
           />
@@ -171,9 +176,23 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
           <TextInput
             style={styles.input}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => { setPassword(value); setErrorMsg(''); }}
             placeholder="Create password"
             secureTextEntry
+            autoCapitalize="none"
+          />
+          <Text style={styles.helperText}>At least 8 characters with uppercase, lowercase and a number.</Text>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>CONFIRM PASSWORD</Text>
+          <TextInput
+            style={styles.input}
+            value={confirmPassword}
+            onChangeText={(value) => { setConfirmPassword(value); setErrorMsg(''); }}
+            placeholder="Enter password again"
+            secureTextEntry
+            autoCapitalize="none"
           />
         </View>
 
@@ -183,7 +202,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             <TextInput
               style={styles.input}
               value={nurseId}
-              onChangeText={setNurseId}
+              onChangeText={(value) => { setNurseId(value); setErrorMsg(''); }}
               placeholder="e.g. N-2041"
             />
           </View>
@@ -195,7 +214,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             <TextInput
               style={styles.input}
               value={slmcNumber}
-              onChangeText={setSlmcNumber}
+              onChangeText={(value) => { setSlmcNumber(value); setErrorMsg(''); }}
               placeholder="e.g. 12345"
             />
           </View>
@@ -207,7 +226,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             <TextInput
               style={styles.input}
               value={pharmacyRegNo}
-              onChangeText={setPharmacyRegNo}
+              onChangeText={(value) => { setPharmacyRegNo(value); setErrorMsg(''); }}
               placeholder="e.g. PH-778"
             />
           </View>
@@ -220,7 +239,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
               <TouchableOpacity
                 key={item.key}
                 style={[styles.roleChip, role === item.key && styles.selectedRoleChip]}
-                onPress={() => setRole(item.key)}
+                onPress={() => { setRole(item.key); setErrorMsg(''); }}
               >
                 <Text style={[styles.roleChipText, role === item.key && styles.selectedRoleChipText]}>
                   {item.label}
@@ -231,9 +250,10 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         </View>
 
         <Button
-          title="Create account"
+          title={loading ? 'Creating account...' : 'Create account'}
           onPress={handleCreateAccount}
           style={styles.createBtn}
+          disabled={loading}
         />
 
         <View style={styles.loginRow}>
@@ -282,6 +302,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#0F172A',
     backgroundColor: '#F8FAFC',
+  },
+  helperText: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 6,
+    lineHeight: 16,
   },
   roleRow: {
     flexDirection: 'row',

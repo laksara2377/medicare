@@ -51,6 +51,7 @@ export default function CaregiverProfilesScreen({
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [photoStatusMessage, setPhotoStatusMessage] = useState('');
+  const profileId = getFirebaseServices().auth.currentUser?.uid || profileUser.id;
 
   useEffect(() => {
     if (currentUser) {
@@ -128,7 +129,7 @@ export default function CaregiverProfilesScreen({
       setEditProfileImage(newUri);
     } else {
       try {
-        await dbService.updateUser(profileUser.id, {
+        await dbService.updateUser(profileId, {
           profileImageUrl: newUri,
         });
         setProfileUser((prev) => ({ ...prev, profileImageUrl: newUri }));
@@ -149,7 +150,7 @@ export default function CaregiverProfilesScreen({
       setEditProfileImage(null);
     } else {
       try {
-        await dbService.updateUser(profileUser.id, {
+        await dbService.updateUser(profileId, {
           profileImageUrl: null,
         });
         setProfileUser((prev) => ({ ...prev, profileImageUrl: null }));
@@ -178,7 +179,7 @@ export default function CaregiverProfilesScreen({
     setEditError('');
     setIsSaving(true);
     try {
-      const updated = await dbService.updateUser(profileUser.id, {
+      const updated = await dbService.updateUser(profileId, {
         name: editName.trim(),
         phone: editPhone.trim(),
         email: editEmail.trim(),
@@ -270,16 +271,6 @@ export default function CaregiverProfilesScreen({
                   <Ionicons name="camera" size={13} color="#FFFFFF" />
                 </View>
               </TouchableOpacity>
-              <View style={styles.photoActions}>
-                <TouchableOpacity style={styles.photoButton} onPress={() => setShowPhotoModal(true)}>
-                  <Text style={styles.photoButtonText}>{editProfileImage ? 'Change image' : 'Add image'}</Text>
-                </TouchableOpacity>
-                {editProfileImage ? (
-                  <TouchableOpacity style={styles.removePhotoButton} onPress={() => setEditProfileImage(null)}>
-                    <Text style={styles.removePhotoText}>Remove image</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
             </View>
 
             <Text style={styles.inputLabel}>FULL NAME</Text>
@@ -358,14 +349,6 @@ export default function CaregiverProfilesScreen({
                   {profileUser.role === 'nurse' ? 'Nurse' : 'Caregiver'}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setShowPhotoModal(true)}
-                style={styles.inlinePhotoLink}
-              >
-                <Text style={styles.inlinePhotoLinkText}>
-                  {profileUser.profileImageUrl ? 'Change photo' : 'Add photo'}
-                </Text>
-              </TouchableOpacity>
               <Text style={styles.patientPhone}>{profileUser.phone}</Text>
               <Text style={styles.patientEmail}>{profileUser.email}</Text>
             </View>
@@ -665,6 +648,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#0D8F7A',
+  },
+  inlineDeletePhoto: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
   },
   linkedPatientImage: {
     width: 52,

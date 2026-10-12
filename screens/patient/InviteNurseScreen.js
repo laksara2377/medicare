@@ -13,6 +13,7 @@ import dbService, { getActivePatientId } from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function InviteNurseScreen({ navigation, route, currentUser }) {
+  const inviteRole = route?.params?.role || 'nurse';
   const authUserId = getFirebaseServices().auth.currentUser?.uid;
   const patientId = route?.params?.patientId
     || (currentUser?.role === 'caregiver' ? getActivePatientId(currentUser) : authUserId || currentUser?.id)
@@ -38,7 +39,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
     else navigation?.goBack();
   };
 
-  const handleAddNurse = async () => {
+  const handleAddProfessional = async () => {
     setFormError('');
     setLoading(true);
 
@@ -63,8 +64,8 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
         return;
       }
 
-      if (user.role !== 'nurse') {
-        setFormError('This user is not a nurse.');
+      if (String(user.role).toLowerCase() !== inviteRole) {
+        setFormError(`This user is not a ${inviteRole}.`);
         return;
       }
 
@@ -72,7 +73,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
         patientId,
         memberId: user.id,
         memberName: user.name,
-        role: 'nurse',
+        role: inviteRole,
         status: 'Pending',
         permissions,
         email: user.email,
@@ -85,8 +86,8 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
         navigation?.goBack();
       }
     } catch (error) {
-      console.error('[UI] Error adding nurse:', error);
-      setFormError(error?.message || 'Could not add nurse. Please try again.');
+      console.error(`[UI] Error adding ${inviteRole}:`, error);
+      setFormError(error?.message || `Could not add ${inviteRole}. Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -104,8 +105,8 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
   return (
     <View style={styles.container}>
       <Header
-        title="Invite a nurse"
-        subtitle="Add a professional nurse"
+        title={`Invite a ${inviteRole}`}
+        subtitle={`Add a professional ${inviteRole}`}
         onBack={handleBack}
       />
 
@@ -189,7 +190,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
 
         {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
-        <Button title="Add nurse" onPress={handleAddNurse} style={styles.addBtn} disabled={loading} />
+        <Button title={`Add ${inviteRole}`} onPress={handleAddProfessional} style={styles.addBtn} disabled={loading} />
       </ScrollView>
     </View>
   );

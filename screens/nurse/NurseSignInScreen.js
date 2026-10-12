@@ -13,24 +13,31 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 import { getFirebaseServices } from '../../firebase/firebaseConfig';
+import { authErrorMessage, normalizeEmail, validateEmail, validatePassword, validateProfessionalId } from '../../utils/authValidation';
 
 export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
   const [email, setEmail] = useState('dilani@careteam.lk');
   const [password, setPassword] = useState('password123');
   const [nurseId, setNurseId] = useState('N-2041');
   const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {
+    if (loading) return;
     setErrorMsg('');
-
-    if (!email.trim() || !password.trim() || !nurseId.trim()) {
-      setErrorMsg('Email, password and Nurse ID are all required.');
+    const validationError = validateEmail(email)
+      || validatePassword(password)
+      || validateProfessionalId('nurse', nurseId);
+    if (validationError) {
+      setErrorMsg(validationError);
       return;
     }
 
+    setLoading(true);
     try {
-      const activeNurse = await dbService.signInProfessionalFirebase(email.trim(), password.trim());
+      const activeNurse = await dbService.signInProfessionalFirebase(normalizeEmail(email), password);
       if (activeNurse.role !== 'nurse' || String(activeNurse.nurseId ?? '') !== nurseId.trim()) {
+        await dbService.signOutFirebase();
         setErrorMsg('Invalid nurse credentials, role or Nurse ID.');
         return;
       }
@@ -40,17 +47,20 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
         navigation?.navigate('NurseMyPatients', { nurse: activeNurse });
       }
     } catch (error) {
-      setErrorMsg('Invalid nurse credentials, role or Nurse ID.');
+      setErrorMsg(authErrorMessage(error, 'Invalid nurse credentials, role or Nurse ID.'));
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email.includes('@')) {
-      setErrorMsg('Enter your nurse email first to reset your password.');
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setErrorMsg(emailError);
       return;
     }
     try {
-      await sendPasswordResetEmail(getFirebaseServices().auth, email.trim());
+      await sendPasswordResetEmail(getFirebaseServices().auth, normalizeEmail(email));
       setErrorMsg('Password reset email sent. Check your inbox.');
     } catch (error) {
       setErrorMsg(error.code === 'auth/user-not-found' ? 'No account was found for this email.' : 'Could not send the reset email. Try again.');
@@ -82,7 +92,7 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
           <TextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => { setEmail(value); setErrorMsg(''); }}
             placeholder="dilani@careteam.lk"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -94,7 +104,7 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
           <TextInput
             style={styles.input}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => { setPassword(value); setErrorMsg(''); }}
             placeholder="Password"
             secureTextEntry
           />
@@ -105,7 +115,7 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
           <TextInput
             style={styles.input}
             value={nurseId}
-            onChangeText={setNurseId}
+            onChangeText={(value) => { setNurseId(value); setErrorMsg(''); }}
             placeholder="Nurse ID (e.g. N-2041)"
           />
         </View>
@@ -115,10 +125,11 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
         </TouchableOpacity>
 
         <Button
-          title="Sign in"
+          title={loading ? 'Signing in...' : 'Sign in'}
           colorScheme="blue"
           onPress={handleSignIn}
           style={styles.signInBtn}
+          disabled={loading}
         />
 
         <View style={styles.signUpRow}>

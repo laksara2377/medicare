@@ -12,11 +12,12 @@ import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
 
 export default function DoctorProfileScreen({ navigation, route, onLogout, currentUser }) {
-  const doctor = route?.params?.doctor || currentUser || {
+  const doctor = currentUser || route?.params?.doctor || {
     id: 'usr-doctor-1',
     name: 'Dr. K. Silva',
     age: '45',
@@ -37,6 +38,8 @@ export default function DoctorProfileScreen({ navigation, route, onLogout, curre
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formError, setFormError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const profileId = getFirebaseServices().auth.currentUser?.uid || doctor.id;
 
   const handleSaveDetails = async () => {
     setFormError('');
@@ -65,8 +68,9 @@ export default function DoctorProfileScreen({ navigation, route, onLogout, curre
     }
 
     try {
-      await dbService.updateUser(doctor.id, { name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage });
+      await dbService.updateUser(profileId, { name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage });
       setDoctorUser((value) => ({ ...value, name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage }));
+      Object.assign(doctor, { name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim(), profileImageUrl: profileImage });
       setSavedSuccess(true);
       setIsEditing(false);
       setTimeout(() => setSavedSuccess(false), 3000);
@@ -76,15 +80,26 @@ export default function DoctorProfileScreen({ navigation, route, onLogout, curre
   };
 
   const handlePhotoSelected = async (uri) => {
-    setProfileImage(uri);
-    await dbService.updateUser(doctor.id, { profileImageUrl: uri });
-    setDoctorUser((value) => ({ ...value, profileImageUrl: uri }));
+    try {
+      await dbService.updateUser(profileId, { profileImageUrl: uri });
+      setProfileImage(uri);
+      setDoctorUser((value) => ({ ...value, profileImageUrl: uri }));
+      doctor.profileImageUrl = uri;
+    } catch (error) {
+      setFormError(error?.message || 'Failed to update profile photo.');
+    }
   };
 
   const handlePhotoDeleted = async () => {
-    setProfileImage(null);
-    await dbService.updateUser(doctor.id, { profileImageUrl: null });
-    setDoctorUser((value) => ({ ...value, profileImageUrl: null }));
+    setShowDeleteConfirm(false);
+    try {
+      await dbService.updateUser(profileId, { profileImageUrl: null });
+      setProfileImage(null);
+      setDoctorUser((value) => ({ ...value, profileImageUrl: null }));
+      doctor.profileImageUrl = null;
+    } catch (error) {
+      setFormError(error?.message || 'Failed to remove profile photo.');
+    }
   };
 
   const handleCancelEdit = () => {
@@ -268,7 +283,8 @@ export default function DoctorProfileScreen({ navigation, route, onLogout, curre
         onConfirm={handleConfirmLogout}
         onCancel={() => setShowLogoutSheet(false)}
       />
-      <ProfilePhotoActionModal visible={showPhotoModal} onClose={() => setShowPhotoModal(false)} onSelectImage={handlePhotoSelected} onDeleteImage={handlePhotoDeleted} hasImage={Boolean(profileImage)} title="Doctor profile photo" />
+      <ProfilePhotoActionModal visible={showPhotoModal} onClose={() => setShowPhotoModal(false)} onSelectImage={handlePhotoSelected} onDeleteImage={() => setShowDeleteConfirm(true)} hasImage={Boolean(profileImage)} title="Doctor profile photo" />
+      <BottomSheetConfirmation visible={showDeleteConfirm} title="Remove profile photo?" message="Are you sure you want to remove your profile photo?" confirmLabel="Remove" cancelLabel="Cancel" onConfirm={handlePhotoDeleted} onCancel={() => setShowDeleteConfirm(false)} />
     </View>
   );
 }
@@ -318,6 +334,10 @@ const styles = StyleSheet.create({
   avatarImage: { width: 72, height: 72, borderRadius: 36 },
   cameraBadge: { position: 'absolute', right: -2, bottom: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: '#0D8F7A', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
   cameraText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
+  photoActionLink: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#EAF5F2', marginBottom: 5 },
+  photoActionText: { color: '#0D8F7A', fontSize: 12, fontWeight: '700' },
+  removePhotoAction: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#FEF2F2', marginBottom: 8 },
+  removePhotoText: { color: '#DC2626', fontSize: 12, fontWeight: '700' },
   name: {
     fontSize: 20,
     fontWeight: '800',

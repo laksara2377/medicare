@@ -31,6 +31,19 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid)).data.status in ['Active', 'accepted']));
     }
 
+    function isActivePharmacist(patientId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid)).data.memberId == request.auth.uid
+        && get(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid)).data.patientId == patientId
+        && get(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid)).data.role == 'pharmacist'
+        && get(/databases/$(database)/documents/care_links/$(patientId + '_' + request.auth.uid)).data.status in ['Active', 'accepted'];
+    }
+
+    function canManagePatientMedicines(patientId) {
+      return canManagePatientPrescriptions(patientId) || isActivePharmacist(patientId);
+    }
+
     function isActiveCareTeamMember(patientId) {
       return isSignedIn()
         && (
@@ -74,13 +87,13 @@ service cloud.firestore {
     }
 
     match /medicines/{medicineId} {
-      allow read: if canManagePatientPrescriptions(resource.data.patientId)
+      allow read: if canManagePatientMedicines(resource.data.patientId)
         || isActiveCareTeamMember(resource.data.patientId);
-      allow delete: if canManagePatientPrescriptions(resource.data.patientId);
-      allow create: if canManagePatientPrescriptions(request.resource.data.patientId)
+      allow delete: if canManagePatientMedicines(resource.data.patientId);
+      allow create: if canManagePatientMedicines(request.resource.data.patientId)
         && request.auth.uid == request.resource.data.userId
         && request.resource.data.patientId != null;
-      allow update: if canManagePatientPrescriptions(resource.data.patientId)
+      allow update: if canManagePatientMedicines(resource.data.patientId)
         && request.resource.data.patientId == resource.data.patientId
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -90,13 +103,13 @@ service cloud.firestore {
     }
 
     match /reminder_times/{reminderId} {
-      allow read, update, delete: if canManagePatientPrescriptions(resource.data.patientId);
-      allow create: if canManagePatientPrescriptions(request.resource.data.patientId);
+      allow read, update, delete: if canManagePatientMedicines(resource.data.patientId);
+      allow create: if canManagePatientMedicines(request.resource.data.patientId);
     }
 
     match /refill_summary/{summaryId} {
-      allow read, update, delete: if canManagePatientPrescriptions(resource.data.patientId);
-      allow create: if canManagePatientPrescriptions(request.resource.data.patientId);
+      allow read, update, delete: if canManagePatientMedicines(resource.data.patientId);
+      allow create: if canManagePatientMedicines(request.resource.data.patientId);
     }
 
     match /prescriptions/{prescriptionId} {
@@ -144,16 +157,16 @@ service cloud.firestore {
           || request.auth.uid == resource.data.memberId
           || isActiveCareTeamMember(resource.data.patientId));
       allow create: if request.auth != null
-        && request.resource.data.role in ['caregiver', 'nurse', 'doctor']
+        && request.resource.data.role in ['caregiver', 'nurse', 'doctor', 'pharmacist']
         && exists(/databases/$(database)/documents/users/$(request.resource.data.patientId))
         && get(/databases/$(database)/documents/users/$(request.resource.data.patientId)).data.role == 'patient'
         && (
           request.auth.uid == request.resource.data.patientId
-          || (request.resource.data.role in ['nurse', 'doctor']
+          || (request.resource.data.role in ['nurse', 'doctor', 'pharmacist']
             && isLinkedCaregiver(request.resource.data.patientId))
         );
       allow update: if request.auth != null
-        && request.resource.data.role in ['caregiver', 'nurse', 'doctor']
+        && request.resource.data.role in ['caregiver', 'nurse', 'doctor', 'pharmacist']
         && (
           request.auth.uid == resource.data.patientId
           || (request.auth.uid == resource.data.memberId
@@ -170,9 +183,10 @@ service cloud.firestore {
             ]))
         );
       allow delete: if request.auth != null
-        && resource.data.role in ['caregiver', 'nurse', 'doctor']
+        && resource.data.role in ['caregiver', 'nurse', 'doctor', 'pharmacist']
         && (
           request.auth.uid == resource.data.patientId
+          || request.auth.uid == resource.data.memberId
           || isLinkedCaregiver(resource.data.patientId)
         );
     }

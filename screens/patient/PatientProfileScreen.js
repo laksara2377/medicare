@@ -12,6 +12,7 @@ import Button from '../../components/Button';
 import FiveTabBottomBar from '../../components/FiveTabBottomBar';
 import Header from '../../components/Header';
 import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
@@ -32,7 +33,7 @@ export default function PatientProfileScreen({
   const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
-    const u = dbService.getUserById(currentUser?.id) || currentUser || dbService.getUserById('usr-patient-1');
+    const u = currentUser || dbService.getUserById(currentUser?.id) || dbService.getUserById('usr-patient-1');
     if (u) setUser(u);
   }, [currentUser?.id]);
 
@@ -40,7 +41,8 @@ export default function PatientProfileScreen({
 
   const handleSelectPhoto = async (photoUri) => {
     try {
-      await dbService.updateUser(user.id, { profileImageUrl: photoUri });
+      const profileId = getFirebaseServices().auth.currentUser?.uid || user.id;
+      await dbService.updateUser(profileId, { profileImageUrl: photoUri });
       setUser((prev) => ({ ...prev, profileImageUrl: photoUri }));
       if (currentUser) {
         currentUser.profileImageUrl = photoUri;
@@ -56,7 +58,8 @@ export default function PatientProfileScreen({
   const handleDeletePhoto = async () => {
     setShowDeleteConfirmSheet(false);
     try {
-      await dbService.updateUser(user.id, { profileImageUrl: null });
+      const profileId = getFirebaseServices().auth.currentUser?.uid || user.id;
+      await dbService.updateUser(profileId, { profileImageUrl: null });
       setUser((prev) => ({ ...prev, profileImageUrl: null }));
       if (currentUser) {
         currentUser.profileImageUrl = null;
@@ -107,16 +110,6 @@ export default function PatientProfileScreen({
             <View style={styles.cameraBadge}>
               <Ionicons name="camera" size={14} color="#FFFFFF" />
             </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setShowPhotoModal(true)}
-            style={styles.photoActionLink}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.photoActionText}>
-              {user.profileImageUrl ? (t('changePhoto') || 'Change photo') : (t('addPhoto') || 'Add photo')}
-            </Text>
           </TouchableOpacity>
 
           <Text style={styles.name}>{user.name}</Text>
@@ -324,6 +317,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#0D8F7A',
+  },
+  removePhotoAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    marginTop: -5,
+    marginBottom: 10,
+  },
+  removePhotoText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   name: {
     fontSize: 20,

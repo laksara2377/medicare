@@ -1,407 +1,129 @@
-import React, { useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
+import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
+import Text from '../../components/PatientText';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
 
-export default function PharmacistProfileScreen({ navigation, route, onLogout }) {
-  const pharmacist = route?.params?.pharmacist || {
-    id: 'usr-pharmacist-1',
-    name: 'Mr. Jayasuriya',
-    age: '38',
-    email: 'jayasuriya@pharmacy.lk',
-    phone: '+94 77 345 6789',
-    pharmacyRegNo: 'PH-778',
-  };
-
+export default function PharmacistProfileScreen({ navigation, route, onLogout, currentUser }) {
+  const initial = currentUser || route?.params?.pharmacist || { name: 'Pharmacist', role: 'pharmacist' };
+  const pharmacistId = getFirebaseServices().auth.currentUser?.uid || initial.id;
+  const [profile, setProfile] = useState(initial);
+  const [links, setLinks] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(pharmacist.name || '');
-  const [age, setAge] = useState(pharmacist.age || '');
-  const [email, setEmail] = useState(pharmacist.email || '');
-  const [phone, setPhone] = useState(pharmacist.phone || '');
-  const [pharmacyRegNo, setPharmacyRegNo] = useState(pharmacist.pharmacyRegNo || '');
+  const [name, setName] = useState(initial.name || '');
+  const [age, setAge] = useState(String(initial.age || ''));
+  const [email, setEmail] = useState(initial.email || '');
+  const [phone, setPhone] = useState(initial.phone || '');
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formError, setFormError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleSaveDetails = () => {
+  useEffect(() => dbService.subscribeToCareLinks(pharmacistId, 'pharmacist', (records) => setLinks(records.filter((item) => item.role === 'pharmacist')), (error) => setFormError(error?.message || 'Could not load patient requests.')), [pharmacistId]);
+
+  const saveProfile = async () => {
     setFormError('');
-    
-    if (!name.trim()) {
-      setFormError('Name is required');
-      return;
-    }
-    
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setFormError('Please enter a valid email address');
-      return;
-    }
-    
-    const phoneRegex = /^\+?[0-9]{10,15}$/;
-    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
-      setFormError('Please enter a valid phone number');
-      return;
-    }
-    
-    const ageNum = parseInt(age, 10);
-    if (isNaN(ageNum) || ageNum < 18 || ageNum > 100) {
-      setFormError('Age must be between 18 and 100');
-      return;
-    }
-
-    dbService.updateUser(pharmacist.id, {
-      name: name.trim(),
-      age: age.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-    });
-    
-    setSavedSuccess(true);
-    setIsEditing(false);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    if (!name.trim()) return setFormError('Name is required.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setFormError('Enter a valid email address.');
+    if (!/^\+?[0-9]{10,15}$/.test(phone.replace(/\s/g, ''))) return setFormError('Enter a valid phone number.');
+    if (age && (Number(age) < 18 || Number(age) > 100)) return setFormError('Age must be between 18 and 100.');
+    try {
+      const updates = { name: name.trim(), age: age.trim(), email: email.trim(), phone: phone.trim() };
+      await dbService.updateUser(pharmacistId, updates);
+      setProfile((value) => ({ ...value, ...updates }));
+      Object.assign(initial, updates);
+      setIsEditing(false);
+      setSuccess('Profile updated successfully.');
+    } catch (error) { setFormError(error?.message || 'Could not update profile.'); }
   };
 
-  const handleCancelEdit = () => {
-    setName(pharmacist.name || '');
-    setAge(pharmacist.age || '');
-    setEmail(pharmacist.email || '');
-    setPhone(pharmacist.phone || '');
-    setFormError('');
-    setIsEditing(false);
+  const savePhoto = async (profileImageUrl) => {
+    try {
+      await dbService.updateUser(pharmacistId, { profileImageUrl });
+      setProfile((value) => ({ ...value, profileImageUrl }));
+      initial.profileImageUrl = profileImageUrl;
+      setSuccess(profileImageUrl ? 'Profile picture updated.' : 'Profile picture removed.');
+    } catch (error) { setFormError(error?.message || 'Could not update profile picture.'); }
   };
 
-  const handleConfirmLogout = async () => {
+  const acceptRequest = async (link) => {
+    try {
+      await dbService.updateCareLink(link.id, { status: 'Active' });
+      navigation?.replace('PharmacistPatientMedicines', { pharmacist: profile, patientId: link.patientId });
+    } catch (error) { setFormError(error?.message || 'Could not accept this patient request.'); }
+  };
+
+  const deleteRequest = async (link) => {
+    try {
+      await dbService.removeCareLink(link.id);
+      setLinks((items) => items.filter((item) => item.id !== link.id));
+      setSuccess('Patient request deleted.');
+    } catch (error) { setFormError(error?.message || 'Could not delete this patient request.'); }
+  };
+
+  const logout = async () => {
     setShowLogoutSheet(false);
-    await authService.logout(navigation);
+    if (onLogout) onLogout(); else await authService.logout(navigation);
   };
 
-  return (
-    <View style={styles.container}>
-      <Header
-        title="Pharmacist profile"
-        subtitle="Manage pharmacy registration"
-        onBack={() => navigation?.goBack()}
-      />
+  const pending = links.filter((item) => String(item.status).toLowerCase() === 'pending');
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {savedSuccess && (
-          <View style={styles.successBanner}>
-            <Text style={styles.successText}>✓ Profile details updated successfully!</Text>
-          </View>
-        )}
+  return <View style={styles.container}>
+    <Header title="Pharmacist profile" subtitle="Manage pharmacy registration" onBack={() => navigation?.replace('PharmacistPatientMedicines', { pharmacist: profile })} />
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {formError ? <Text style={styles.error}>{formError}</Text> : null}
+      {success ? <Text style={styles.success}>{success}</Text> : null}
+      <View style={styles.profileHeader}>
+        <TouchableOpacity style={styles.avatar} onPress={() => setShowPhotoModal(true)}>
+          {profile.profileImageUrl ? <Image source={{ uri: profile.profileImageUrl }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{(profile.name || 'P').charAt(0)}</Text>}
+          <View style={styles.cameraBadge}><Text style={styles.cameraText}>✎</Text></View>
+        </TouchableOpacity>
+        <Text style={styles.profileName}>{profile.name || 'Pharmacist'}</Text>
+        <Text style={styles.roleTag}>Pharmacist · verified</Text>
+      </View>
 
-        {/* Pharmacist Header */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>M</Text>
-          </View>
-          <Text style={styles.name}>{pharmacist.name || 'Mr. Jayasuriya'}</Text>
-          <View style={styles.roleTag}>
-            <Text style={styles.roleTagText}>Pharmacist · Verified</Text>
-          </View>
-        </View>
+      <Text style={styles.sectionTitle}>PATIENT REQUESTS</Text>
+      <View style={styles.card}>
+        {pending.length === 0 ? <Text style={styles.empty}>No pending patient requests.</Text> : pending.map((link) => <View key={link.id} style={styles.requestRow}>
+          <View style={styles.requestInfo}><Text style={styles.requestName}>{link.patientName || link.addedBy || 'Patient request'}</Text><Text style={styles.requestEmail}>{link.email || 'Medicine and refill access'}</Text></View>
+          <View style={styles.requestActions}><TouchableOpacity style={styles.acceptBtn} onPress={() => acceptRequest(link)}><Text style={styles.acceptText}>Accept</Text></TouchableOpacity><TouchableOpacity style={styles.deleteBtn} onPress={() => deleteRequest(link)}><Text style={styles.deleteText}>Delete</Text></TouchableOpacity></View>
+        </View>)}
+      </View>
 
-        {/* Form Fields */}
-        <View style={styles.formCard}>
-          {isEditing ? (
-            <>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>FULL NAME</Text>
-                <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Enter full name"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>AGE</Text>
-                <TextInput
-                  style={styles.input}
-                  value={age}
-                  onChangeText={setAge}
-                  placeholder="Age"
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>EMAIL</Text>
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Email address"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>PHONE NUMBER</Text>
-                <TextInput
-                  style={styles.input}
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Phone number"
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>PHARMACY REGISTRATION NO.</Text>
-                <View style={styles.lockedField}>
-                  <TextInput
-                    style={[styles.input, styles.lockedInput]}
-                    value={pharmacyRegNo}
-                    editable={false}
-                  />
-                  <Text style={styles.lockIcon}>🔒</Text>
-                </View>
-              </View>
-
-              {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
-
-              <View style={styles.editActionsRow}>
-                <Button
-                  title="Save changes"
-                  onPress={handleSaveDetails}
-                  style={styles.saveBtn}
-                />
-                <Button
-                  title="Cancel"
-                  variant="outline"
-                  onPress={handleCancelEdit}
-                  style={styles.cancelBtn}
-                />
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>FULL NAME</Text>
-                <Text style={styles.value}>{pharmacist.name || '—'}</Text>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>AGE</Text>
-                <Text style={styles.value}>{pharmacist.age || '—'}</Text>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>EMAIL</Text>
-                <Text style={styles.value}>{pharmacist.email || '—'}</Text>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>PHONE NUMBER</Text>
-                <Text style={styles.value}>{pharmacist.phone || '—'}</Text>
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>PHARMACY REGISTRATION NO.</Text>
-                <View style={styles.lockedField}>
-                  <Text style={[styles.value, styles.lockedValue]}>{pharmacist.pharmacyRegNo || '—'}</Text>
-                  <Text style={styles.lockIcon}>🔒</Text>
-                </View>
-              </View>
-
-              <View style={styles.infoBox}>
-                <Text style={styles.infoText}>
-                  Access is read-only and limited to patients assigned to your pharmacy account.
-                </Text>
-              </View>
-
-              <Button
-                title="Edit details"
-                variant="outline"
-                onPress={() => setIsEditing(true)}
-                style={styles.editBtn}
-              />
-            </>
-          )}
-        </View>
-
-        <Button
-          title="Log out"
-          style={styles.logoutBtn}
-          textStyle={styles.logoutBtnText}
-          onPress={() => setShowLogoutSheet(true)}
-        />
-      </ScrollView>
-
-      {/* Logout Confirmation Sheet */}
-      <BottomSheetConfirmation
-        visible={showLogoutSheet}
-        title="Log out of Pharmacist Portal?"
-        message="You will need to sign in again to access the pharmacy dashboard."
-        confirmLabel="Log out"
-        cancelLabel="Cancel"
-        onConfirm={handleConfirmLogout}
-        onCancel={() => setShowLogoutSheet(false)}
-      />
-    </View>
-  );
+      <View style={styles.card}>
+        {isEditing ? <>
+          <Text style={styles.label}>FULL NAME</Text><TextInput style={styles.input} value={name} onChangeText={setName} />
+          <Text style={styles.label}>AGE</Text><TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" />
+          <Text style={styles.label}>EMAIL</Text><TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+          <Text style={styles.label}>PHONE NUMBER</Text><TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <View style={styles.buttonRow}><Button title="Save" onPress={saveProfile} style={styles.flexBtn} /><Button title="Cancel" variant="outline" onPress={() => setIsEditing(false)} style={styles.flexBtn} /></View>
+        </> : <>
+          <Text style={styles.label}>FULL NAME</Text><Text style={styles.value}>{profile.name || '—'}</Text>
+          <Text style={styles.label}>AGE</Text><Text style={styles.value}>{profile.age || '—'}</Text>
+          <Text style={styles.label}>EMAIL</Text><Text style={styles.value}>{profile.email || '—'}</Text>
+          <Text style={styles.label}>PHONE NUMBER</Text><Text style={styles.value}>{profile.phone || '—'}</Text>
+          <Text style={styles.label}>PHARMACY REGISTRATION NO.</Text><Text style={styles.value}>{profile.pharmacyRegNo || profile.registrationNumber || '—'} 🔒</Text>
+          <Button title="Edit details" variant="outline" onPress={() => setIsEditing(true)} style={styles.editBtn} />
+        </>}
+      </View>
+      <Button title="Log out" variant="danger-outline" onPress={() => setShowLogoutSheet(true)} />
+    </ScrollView>
+    <ProfilePhotoActionModal visible={showPhotoModal} onClose={() => setShowPhotoModal(false)} onSelectImage={savePhoto} onDeleteImage={() => setShowDeleteConfirm(true)} hasImage={Boolean(profile.profileImageUrl)} title="Pharmacist profile picture" />
+    <BottomSheetConfirmation visible={showDeleteConfirm} title="Remove profile photo?" message="Are you sure you want to remove your profile photo?" confirmLabel="Remove" cancelLabel="Cancel" onConfirm={() => { setShowDeleteConfirm(false); savePhoto(null); }} onCancel={() => setShowDeleteConfirm(false)} />
+    <BottomSheetConfirmation visible={showLogoutSheet} title="Log out of Pharmacist Portal?" message="You will need to sign in again." confirmLabel="Log out" cancelLabel="Cancel" onConfirm={logout} onCancel={() => setShowLogoutSheet(false)} />
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
-  successBanner: {
-    backgroundColor: '#E6F4F1',
-    borderColor: '#0D8F7A',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 8,
-  },
-  successText: {
-    color: '#0D8F7A',
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  profileHeader: {
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#EAF5F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0D8F7A',
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  roleTag: {
-    backgroundColor: '#E6F4F1',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  roleTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#0D8F7A',
-  },
-  formCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
-  },
-  fieldGroup: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
-  },
-  value: {
-    fontSize: 15,
-    color: '#0F172A',
-  },
-  lockedField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  lockedInput: {
-    flex: 1,
-    backgroundColor: '#F1F5F9',
-  },
-  lockedValue: {
-    flex: 1,
-    color: '#64748B',
-  },
-  lockIcon: {
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  errorText: {
-    fontSize: 13,
-    color: '#EF4444',
-    marginBottom: 12,
-  },
-  editActionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  saveBtn: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  cancelBtn: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  infoBox: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#475569',
-    lineHeight: 17,
-  },
-  editBtn: {
-    marginBottom: 0,
-  },
-  logoutBtn: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#EF4444',
-    marginTop: 8,
-  },
-  logoutBtnText: {
-    color: '#EF4444',
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' }, scrollContent: { padding: 20, paddingBottom: 40 }, error: { color: '#B91C1C', backgroundColor: '#FEE2E2', padding: 10, borderRadius: 8, marginBottom: 10 }, success: { color: '#0D8F7A', backgroundColor: '#E6F4F1', padding: 10, borderRadius: 8, marginBottom: 10, textAlign: 'center', fontWeight: '700' }, profileHeader: { alignItems: 'center', marginBottom: 20 }, avatar: { width: 78, height: 78, borderRadius: 39, backgroundColor: '#EAF5F2', alignItems: 'center', justifyContent: 'center' }, avatarImage: { width: 78, height: 78, borderRadius: 39 }, avatarText: { color: '#0D8F7A', fontSize: 30, fontWeight: '800' }, cameraBadge: { position: 'absolute', right: -2, bottom: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: '#0D8F7A', alignItems: 'center', justifyContent: 'center' }, cameraText: { color: '#FFFFFF', fontWeight: '800' }, profileName: { marginTop: 10, fontSize: 20, fontWeight: '800', color: '#0F172A' }, roleTag: { color: '#0D8F7A', fontWeight: '700', marginTop: 4 }, photoHint: { color: '#64748B', fontSize: 12, marginTop: 5 }, sectionTitle: { color: '#64748B', fontSize: 12, fontWeight: '800', marginBottom: 8 }, card: { padding: 15, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', borderRadius: 15, marginBottom: 16 }, empty: { color: '#64748B', textAlign: 'center' }, requestRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }, requestInfo: { marginBottom: 9 }, requestName: { color: '#0F172A', fontWeight: '700', fontSize: 15 }, requestEmail: { color: '#64748B', fontSize: 12, marginTop: 2 }, requestActions: { flexDirection: 'row', gap: 8 }, acceptBtn: { flex: 1, backgroundColor: '#0D8F7A', padding: 9, alignItems: 'center', borderRadius: 8 }, acceptText: { color: '#FFFFFF', fontWeight: '700' }, deleteBtn: { flex: 1, borderWidth: 1, borderColor: '#EF4444', padding: 9, alignItems: 'center', borderRadius: 8 }, deleteText: { color: '#EF4444', fontWeight: '700' }, label: { color: '#94A3B8', fontWeight: '800', fontSize: 11, marginTop: 9, marginBottom: 5 }, value: { color: '#0F172A', fontSize: 15, marginBottom: 5 }, input: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, backgroundColor: '#FFFFFF', padding: 10, marginBottom: 5 }, buttonRow: { flexDirection: 'row', gap: 8, marginTop: 14 }, flexBtn: { flex: 1, marginBottom: 0 }, editBtn: { marginTop: 15, marginBottom: 0 },
+  photoActionLink: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#EAF5F2', marginTop: 7 },
+  photoActionText: { color: '#0D8F7A', fontSize: 12, fontWeight: '700' },
+  removePhotoAction: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#FEF2F2', marginTop: 5 },
+  removePhotoText: { color: '#DC2626', fontSize: 12, fontWeight: '700' },
 });

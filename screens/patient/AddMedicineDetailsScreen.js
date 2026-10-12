@@ -12,9 +12,9 @@ import dbService, { getActivePatientId } from '../../services/db';
 import Text from '../../components/PatientText';
 import { useT } from '../../i18n/LanguageContext';
 
-export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
+export default function AddMedicineDetailsScreen({ navigation, route, currentUser }) {
   const t = useT();
-  const patientId = getActivePatientId(currentUser);
+  const patientId = route?.params?.patientId || getActivePatientId(currentUser);
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
   const [times, setTimes] = useState([]);
@@ -69,7 +69,9 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
         times
       );
 
-      navigation?.navigate('MedicineAdded', { medicine: newMed.medicine, times });
+      const returnScreen = route?.params?.returnScreen;
+      if (returnScreen) navigation?.replace(returnScreen, { patientId, pharmacist: currentUser });
+      else navigation?.navigate('MedicineAdded', { medicine: newMed.medicine, times });
     } catch (error) {
       console.error('AddMedicineDetailsScreen handleSave ERROR:', error, error?.code, error?.message);
       setErrorMsg(`Failed to save medicine [${error?.code || 'unknown'}]: ${error?.message || error}. Please try again.`);

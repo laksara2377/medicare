@@ -202,7 +202,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               <View style={styles.infoCol}>
                 <Text style={styles.name}>{item.memberName}</Text>
                 <Text style={styles.roleText}>{item.role === 'doctor' ? 'Doctor' : item.role === 'pharmacist' ? 'Pharmacist' : item.role}</Text>
-                <Text style={styles.accessTag}>Active · read-only, via QR</Text>
+                <Text style={styles.accessTag}>{item.status || 'Pending'} · {item.role === 'pharmacist' ? 'medicine access' : 'clinical access'}</Text>
               </View>
 
               <TouchableOpacity
@@ -214,7 +214,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
             </View>
           ))}
           {accessLinks.filter(c => c.role === 'doctor' || c.role === 'pharmacist').length === 0 && (
-            <Text style={styles.emptyText}>No doctors or pharmacists have scanned your QR code yet</Text>
+            <Text style={styles.emptyText}>No doctors or pharmacists added yet</Text>
           )}
         </View>
 
@@ -255,9 +255,17 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
                 <Text style={styles.roleCardDesc}>Professional nurse who can view adherence and add care notes</Text>
               </TouchableOpacity>
 
-              <View style={styles.noteBox}>
-                <Text style={styles.noteText}>Doctors and pharmacists cannot be added here. Show them your QR code from Share with Doctor.</Text>
-              </View>
+              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteNurse', { patientId, currentUser, role: 'doctor', onAdd: () => setShowAddPersonScreen(false) })}>
+                <View style={styles.roleCardIcon}><Text style={styles.roleCardIconText}>🩺</Text></View>
+                <Text style={styles.roleCardTitle}>Doctor</Text>
+                <Text style={styles.roleCardDesc}>Doctor who can review history, notes, prescriptions and lab tests</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteNurse', { patientId, currentUser, role: 'pharmacist', onAdd: () => setShowAddPersonScreen(false) })}>
+                <View style={styles.roleCardIcon}><Text style={styles.roleCardIconText}>💊</Text></View>
+                <Text style={styles.roleCardTitle}>Pharmacist</Text>
+                <Text style={styles.roleCardDesc}>Pharmacist who can manage medicines and refill requests</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>

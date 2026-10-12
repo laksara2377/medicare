@@ -13,6 +13,7 @@ import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import ProfilePhotoActionModal from '../../components/ProfilePhotoActionModal';
+import { getFirebaseServices } from '../../firebase/firebaseConfig';
 import authService from '../../services/authService';
 import dbService from '../../services/db';
 
@@ -39,13 +40,14 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
   const [formError, setFormError] = useState('');
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const profileId = getFirebaseServices().auth.currentUser?.uid || nurseUser.id;
 
   const handlePhotoSelected = async (newUri) => {
-    setProfileImage(newUri);
     try {
-      await dbService.updateUser(nurseUser.id, {
+      await dbService.updateUser(profileId, {
         profileImageUrl: newUri,
       });
+      setProfileImage(newUri);
       setNurseUser((prev) => ({ ...prev, profileImageUrl: newUri }));
       if (currentUser) {
         currentUser.profileImageUrl = newUri;
@@ -60,11 +62,11 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
 
   const handlePhotoDeleted = async () => {
     setShowDeleteConfirm(false);
-    setProfileImage(null);
     try {
-      await dbService.updateUser(nurseUser.id, {
+      await dbService.updateUser(profileId, {
         profileImageUrl: null,
       });
+      setProfileImage(null);
       setNurseUser((prev) => ({ ...prev, profileImageUrl: null }));
       if (currentUser) {
         currentUser.profileImageUrl = null;
@@ -105,7 +107,7 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
     }
 
     try {
-      await dbService.updateUser(nurseUser.id, {
+      await dbService.updateUser(profileId, {
         name: name.trim(),
         age: age.trim(),
         email: email.trim(),
@@ -193,16 +195,6 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setShowPhotoModal(true)}
-            style={styles.photoActionLink}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.photoActionText}>
-              {profileImage ? 'Change photo' : 'Add photo'}
-            </Text>
-          </TouchableOpacity>
-
           <Text style={styles.name}>{name || nurseUser.name || 'Nurse Dilani'}</Text>
           <View style={styles.roleTag}>
             <Text style={styles.roleTagText}>Nurse · Care team</Text>
@@ -215,7 +207,7 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
             <>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>PROFILE PHOTO</Text>
-                <View style={styles.photoEditRow}>
+                <TouchableOpacity style={styles.photoEditRow} onPress={() => setShowPhotoModal(true)}>
                   {profileImage ? (
                     <Image source={{ uri: profileImage }} style={styles.previewImage} />
                   ) : (
@@ -223,25 +215,7 @@ export default function NurseProfileScreen({ navigation, route, onLogout, curren
                       <Text style={styles.previewPlaceholderText}>{name ? name.charAt(0) : 'N'}</Text>
                     </View>
                   )}
-                  <View style={styles.photoEditActions}>
-                    <TouchableOpacity
-                      style={styles.changePhotoBtn}
-                      onPress={() => setShowPhotoModal(true)}
-                    >
-                      <Text style={styles.changePhotoBtnText}>
-                        {profileImage ? 'Change photo' : 'Add photo'}
-                      </Text>
-                    </TouchableOpacity>
-                    {profileImage ? (
-                      <TouchableOpacity
-                        style={styles.deletePhotoBtn}
-                        onPress={() => setShowDeleteConfirm(true)}
-                      >
-                        <Text style={styles.deletePhotoBtnText}>Remove photo</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </View>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.fieldGroup}>
@@ -485,6 +459,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#007AFF',
+  },
+  removePhotoAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    marginTop: -3,
+    marginBottom: 8,
+  },
+  removePhotoText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '700',
   },
   name: {
     fontSize: 20,

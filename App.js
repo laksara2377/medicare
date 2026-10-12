@@ -223,7 +223,7 @@ export default function App() {
     if (isLoadingAuth) return <SplashScreen navigation={navigation} currentUser={currentUser} />;
     const pharmacistBlockedScreens = ['HomeVisitSummary', 'PatientVisits', 'PrescriptionsRefills', 'HealthReport', 'AddCareNote', 'DoctorNotes', 'CareNotes', 'RefillStatus'];
     if (userRole === 'pharmacist' && pharmacistBlockedScreens.includes(currentScreen)) {
-      return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} />;
+      return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} currentUser={currentUser} />;
     }
     switch (currentScreen) {
       case 'Splash': return <SplashScreen navigation={navigation} currentUser={currentUser} />;
@@ -259,7 +259,7 @@ export default function App() {
       case 'DoseScreen': return <DoseScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'YourMedicines': return <YourMedicinesScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} currentUser={currentUser} isOffline={isOffline} onRetryOffline={retryConnection} />;
       case 'AddMedicineSheet': return <AddMedicineSheet navigation={navigation} />;
-      case 'AddMedicineDetails': return <AddMedicineDetailsScreen navigation={navigation} currentUser={currentUser} />;
+      case 'AddMedicineDetails': return <AddMedicineDetailsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'MedicineAdded': return <MedicineAddedScreen navigation={navigation} route={route} />;
       case 'EditDeleteMedicine': return <EditDeleteMedicineScreen navigation={navigation} route={route} />;
       case 'MedicationDetail': return <MedicationDetailScreen navigation={navigation} route={route} currentUser={currentUser} />;
@@ -309,8 +309,8 @@ export default function App() {
       case 'PatientHistory': return <PatientHistoryScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'NurseProfile': return <NurseProfileScreen navigation={navigation} route={route} onLogout={handleLogout} currentUser={currentUser} />;
       case 'NursePendingRequests': return <NursePendingRequestsScreen navigation={navigation} currentUser={currentUser} />;
-      case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} />;
-      case 'PharmacistProfile': return <PharmacistProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
+      case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} currentUser={currentUser} />;
+      case 'PharmacistProfile': return <PharmacistProfileScreen navigation={navigation} route={route} onLogout={handleLogout} currentUser={currentUser} />;
       case 'RefillSummary': return <RefillSummaryScreen navigation={navigation} route={route} />;
       default: return <SplashScreen navigation={navigation} />;
     }

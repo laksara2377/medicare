@@ -12,6 +12,7 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 import { getFirebaseServices } from '../../firebase/firebaseConfig';
+import { authErrorMessage, normalizeEmail, validateEmail, validatePassword } from '../../utils/authValidation';
 
 export default function LoginScreen({ navigation, onLoginSuccess, route }) {
   const routeRole = route?.params?.role;
@@ -20,27 +21,24 @@ export default function LoginScreen({ navigation, onLoginSuccess, route }) {
   const [password, setPassword] = useState('');
   const [hasError, setHasError] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {
+    if (loading) return;
     setHasError(false);
     setErrorText('');
-
-    if (!emailOrPhone.trim() || !password.trim()) {
+    const validationError = validateEmail(emailOrPhone) || validatePassword(password);
+    if (validationError) {
       setHasError(true);
-      setErrorText('Enter your email address and password.');
+      setErrorText(validationError);
       return;
     }
 
-    if (!emailOrPhone.includes('@')) {
-      setHasError(true);
-      setErrorText('Sign in with the email address used to create your account.');
-      return;
-    }
-
+    setLoading(true);
     try {
       const user = await dbService.signInFirebase(
-        emailOrPhone.trim(),
-        password.trim(),
+        normalizeEmail(emailOrPhone),
+        password,
         activeRole
       );
 
@@ -59,27 +57,22 @@ export default function LoginScreen({ navigation, onLoginSuccess, route }) {
       setHasError(true);
       setErrorText("That password doesn't match. Check it and try again.");
     } catch (error) {
-      const messages = {
-        'auth/wrong-password': "That password doesn't match. Check it and try again.",
-        'auth/invalid-credential': "That password doesn't match. Check it and try again.",
-        'auth/user-not-found': "That password doesn't match. Check it and try again.",
-        'auth/too-many-requests': 'Too many sign-in attempts. Wait a moment and try again.',
-        'auth/network-request-failed': "You're offline. Check your connection and try again.",
-        'auth/role-mismatch': error.message,
-      };
       setHasError(true);
-      setErrorText(messages[error.code] || 'Something went wrong. Try again.');
+      setErrorText(authErrorMessage(error, 'Something went wrong. Try again.'));
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!emailOrPhone.includes('@')) {
+    const emailError = validateEmail(emailOrPhone);
+    if (emailError) {
       setHasError(true);
-      setErrorText('Enter your email address first to reset your password.');
+      setErrorText(emailError);
       return;
     }
     try {
-      await sendPasswordResetEmail(getFirebaseServices().auth, emailOrPhone.trim());
+      await sendPasswordResetEmail(getFirebaseServices().auth, normalizeEmail(emailOrPhone));
       setHasError(true);
       setErrorText('Password reset email sent. Check your inbox.');
     } catch (error) {
@@ -129,7 +122,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, route }) {
           <TextInput
             style={styles.input}
             value={emailOrPhone}
-            onChangeText={setEmailOrPhone}
+            onChangeText={(value) => { setEmailOrPhone(value); setHasError(false); setErrorText(''); }}
             placeholder="Email address"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -162,7 +155,7 @@ export default function LoginScreen({ navigation, onLoginSuccess, route }) {
           </TouchableOpacity>
         </View>
 
-        <Button title="Sign in" onPress={handleSignIn} style={styles.signInBtn} />
+        <Button title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} style={styles.signInBtn} disabled={loading} />
 
         <View style={styles.signUpRow}>
           <Text style={styles.signUpQuestion}>Don't have an account? </Text>
